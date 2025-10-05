@@ -1,4 +1,5 @@
 Feature: Core Space Ball gameplay loop
+  # Visual reference: docs/assets/space_ball_sketch.png (see docs/design_reference.md for context)
   As a mobile player
   I want the ball to respond to gravity and rail spacing
   So that I can control its descent and score points by dropping it intentionally
