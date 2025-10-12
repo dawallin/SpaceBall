@@ -1,9 +1,13 @@
 # Space Ball Design Reference
 
-The sketch titled **Space Ball Concept** (store it at `docs/assets/space_ball_sketch.png`) illustrates the mobile portrait layout for the plinko-style scoring board. Use this image as the canonical visual reference when updating gameplay or UI specs.
+Two companion sketches illustrate the intended feel of the prototype:
 
-- Mercury, Earth, Mars, Jupiter, Saturn, and Pluto scoring pockets are aligned vertically beneath the apex of the rails.
-- Score values increase as the ball drops lower, with Pluto representing the highest-value goal at the bottom center.
-- The player's thumbs pinch the rails near the base, reinforcing the touch-control scenarios described in `docs/specs/touch_controls.feature`.
+- **Gameplay layout** – `docs/assets/space_ball_sketch.png`
+  - Mercury, Earth, Mars, Jupiter, Saturn, and Pluto scoring pockets are aligned vertically beneath the apex of the rails.
+  - Score values increase as the ball drops lower, with Pluto representing the highest-value goal at the bottom center.
+  - The player's thumbs pinch the rails near the base, reinforcing the touch-control scenarios described in `docs/specs/touch_controls.feature`.
+- **Thumb controls** – `docs/assets/thumb_control_sketch.png`
+  - Depicts how each thumb rests on an independent touch pad.
+  - Highlights the expectation that horizontal thumb movement directly drives the corresponding rail.
 
-When refining behaviour-driven specs, add a comment noting this asset so future contributors understand the intended arrangement.
+Reference the appropriate asset from the relevant `.feature` file so future contributors understand the intended arrangement and control scheme before implementing gameplay updates.

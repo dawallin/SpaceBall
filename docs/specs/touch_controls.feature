@@ -1,4 +1,5 @@
 Feature: Dual-rail touch controls
+  # Visual reference: docs/assets/thumb_control_sketch.png (see docs/design_reference.md for context)
   As a mobile player using both thumbs
   I want dedicated left and right touch zones
   So that I can independently move each rail to guide the ball
