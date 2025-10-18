@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Space Ball</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <main class="game-shell">
+      <header class="hud">
+        <div class="hud__score">
+          <span class="hud__label">Score</span>
+          <span id="scoreValue" class="hud__value">0</span>
+        </div>
+        <div class="hud__status">
+          <span class="hud__label">Tilt</span>
+          <span id="tiltReadout" class="hud__value">12°</span>
+        </div>
+      </header>
+
+      <section class="playfield-wrapper">
+        <canvas id="playfield" width="360" height="640" aria-label="Space Ball playfield"></canvas>
+        <aside class="tilt-control" aria-label="Tilt control">
+          <label for="tiltSlider" class="tilt-control__label">Rail Tilt</label>
+            <input
+              id="tiltSlider"
+              type="range"
+              min="0"
+              max="100"
+              value="20"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="20"
+              aria-label="Adjust rail tilt"
+              orient="vertical"
+            />
+          <div class="tilt-control__ticks">
+            <span>steep</span>
+            <span>gentle</span>
+          </div>
+        </aside>
+      </section>
+
+      <footer class="touch-zones">
+        <button class="touch-pad touch-pad--left" id="leftPad" aria-label="Left rail control">
+          <span class="touch-pad__hint">Left Rail</span>
+        </button>
+        <button class="touch-pad touch-pad--right" id="rightPad" aria-label="Right rail control">
+          <span class="touch-pad__hint">Right Rail</span>
+        </button>
+      </footer>
+    </main>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
