@@ -1,0 +1,43 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Determine if Playwright is required
+        id: playwright
+        run: |
+          if node -e "const { readFileSync } = require('fs'); const pkg = JSON.parse(readFileSync('package.json', 'utf8')); const dev = pkg.devDependencies || {}; process.exit(dev.playwright || dev['@playwright/test'] ? 0 : 1);"; then
+            echo "install=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "install=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Playwright browsers
+        if: steps.playwright.outputs.install == 'true'
+        run: npx playwright install --with-deps
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run Playwright tests
+        if: steps.playwright.outputs.install == 'true'
+        run: npx playwright test

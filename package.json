@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/unit && node ./scripts/run-e2e.js",
+    "test": "jest",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.43.1"
+    "@playwright/test": "^1.43.1",
+    "jest": "^29.0.0"
   }
 }
