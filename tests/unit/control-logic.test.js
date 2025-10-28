@@ -68,7 +68,7 @@ test('pocket layouts stay centred and ordered', () => {
   const names = pockets.map((pocket) => pocket.name);
   assert.deepEqual(names, ['Mercury', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Pluto']);
   for (let i = 1; i < pockets.length; i += 1) {
-    assert.ok(pockets[i].y > pockets[i - 1].y);
+    assert.ok(pockets[i].y < pockets[i - 1].y);
   }
   const highlighted = pockets.filter((pocket) => pocket.highlight === true);
   assert.equal(highlighted.length, 1);

@@ -30,3 +30,8 @@ Feature: Core Space Ball gameplay loop
     Then the ball should fall straight down along the Z axis into the scoring zone below the rails
     And the player's score should increase by one
     And the ball should reset to the apex for the next attempt within two seconds
+
+  Scenario: Scoring pockets descend beneath the rail exit
+    When the scoring pockets are visible under the rails
+    Then each pocket should sit lower than the one above it
+    And Pluto should be the lowest and widest target
