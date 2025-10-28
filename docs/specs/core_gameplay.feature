@@ -14,7 +14,7 @@ Feature: Core Space Ball gameplay loop
 
   Scenario: Ball speeds up while the rails open
     When the player widens the gap between the rails gradually
-    Then the ball should move downward along the rails because of gravity
+    Then the ball should move downward along the rails in the X-Y plane because of gravity
     And the ball's speed should increase smoothly as it descends
 
   Scenario: Ball climbs back when the rails close
@@ -27,6 +27,6 @@ Feature: Core Space Ball gameplay loop
   Scenario: Ball scores after exiting the rails
     Given the player has widened the rails enough for the ball to reach the base
     When the gap becomes wider than the ball's diameter at the exit point
-    Then the ball should fall through the opening into the scoring zone
+    Then the ball should fall straight down along the Z axis into the scoring zone below the rails
     And the player's score should increase by one
     And the ball should reset to the apex for the next attempt within two seconds
