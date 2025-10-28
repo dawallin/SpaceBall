@@ -14,3 +14,9 @@ Feature: Camera perspective tuning
   Scenario: Updating camera values via sliders
     When I adjust any of the Orbit, Pitch, or Zoom sliders
     Then the corresponding value readout should update to reflect the new setting
+
+  Scenario: Pitch slider supports a full rotation range
+    When I drag the Pitch slider to its minimum position
+    Then the pitch value should read "0°"
+    When I drag the Pitch slider to its maximum position
+    Then the pitch value should read "360°"
