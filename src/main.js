@@ -22,12 +22,22 @@ import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Meshes/Builders/tube
 import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Meshes/Builders/sphereBuilder.js";
 import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Materials/standardMaterial.js";
 
+function degToRad(degrees) {
+  return (Number(degrees) * Math.PI) / 180;
+}
+
 const canvas = document.getElementById("playfield");
 const tiltSlider = document.getElementById("tiltSlider");
 const tiltReadout = document.getElementById("tiltReadout");
 const scoreValue = document.getElementById("scoreValue");
 const leftPad = document.getElementById("leftPad");
 const rightPad = document.getElementById("rightPad");
+const cameraAlphaSlider = document.getElementById("cameraAlphaSlider");
+const cameraBetaSlider = document.getElementById("cameraBetaSlider");
+const cameraZoomSlider = document.getElementById("cameraZoomSlider");
+const cameraAlphaReadout = document.getElementById("cameraAlphaReadout");
+const cameraBetaReadout = document.getElementById("cameraBetaReadout");
+const cameraZoomReadout = document.getElementById("cameraZoomReadout");
 
 const tiltBounds = {
   min: 8,
@@ -72,20 +82,81 @@ scene.clearColor = new Color4(0, 0, 0, 0);
 
 const boardPivot = new TransformNode("boardPivot", scene);
 
+const initialCameraSettings = {
+  alpha: degToRad(cameraAlphaSlider?.value ?? 20),
+  beta: degToRad(cameraBetaSlider?.value ?? 60),
+  radius: Number(cameraZoomSlider?.value ?? 12),
+};
+
 const camera = new ArcRotateCamera(
   "camera",
-  Math.PI / 1.7,
-  Math.PI / 2.6,
-  12.5,
-  new Vector3(0, -0.4, -0.8),
+  initialCameraSettings.alpha,
+  initialCameraSettings.beta,
+  initialCameraSettings.radius,
+  new Vector3(0, -0.2, -1.6),
   scene
 );
-camera.lowerRadiusLimit = 10;
-camera.upperRadiusLimit = 14;
+camera.lowerRadiusLimit = Number(cameraZoomSlider?.min ?? 9);
+camera.upperRadiusLimit = Number(cameraZoomSlider?.max ?? 16);
+camera.lowerBetaLimit = degToRad(cameraBetaSlider?.min ?? 35);
+camera.upperBetaLimit = degToRad(cameraBetaSlider?.max ?? 110);
 camera.wheelPrecision = 120;
 camera.panningSensibility = 0;
 camera.attachControl(canvas, false);
 camera.inputs.clear();
+
+function applyCameraSettings() {
+  if (!cameraAlphaSlider || !cameraBetaSlider || !cameraZoomSlider) {
+    return;
+  }
+
+  const alphaDeg = clamp(Number(cameraAlphaSlider.value) || 0, 0, 360);
+  const betaDeg = clamp(
+    Number(cameraBetaSlider.value) || 0,
+    Number(cameraBetaSlider.min) || 35,
+    Number(cameraBetaSlider.max) || 110
+  );
+  const zoom = clamp(
+    Number(cameraZoomSlider.value) || 0,
+    Number(cameraZoomSlider.min) || 9,
+    Number(cameraZoomSlider.max) || 16
+  );
+
+  camera.alpha = degToRad(alphaDeg);
+  camera.beta = degToRad(betaDeg);
+  camera.radius = zoom;
+
+  if (cameraAlphaReadout) {
+    cameraAlphaReadout.textContent = `${Math.round(alphaDeg)}°`;
+  }
+  if (cameraBetaReadout) {
+    cameraBetaReadout.textContent = `${Math.round(betaDeg)}°`;
+  }
+  if (cameraZoomReadout) {
+    cameraZoomReadout.textContent = zoom.toFixed(1);
+  }
+
+  cameraAlphaSlider.value = String(alphaDeg);
+  cameraBetaSlider.value = String(betaDeg);
+  cameraZoomSlider.value = zoom.toFixed(1);
+
+  cameraAlphaSlider.setAttribute("aria-valuenow", cameraAlphaSlider.value);
+  cameraBetaSlider.setAttribute("aria-valuenow", cameraBetaSlider.value);
+  cameraZoomSlider.setAttribute("aria-valuenow", cameraZoomSlider.value);
+}
+
+if (cameraAlphaSlider && cameraBetaSlider && cameraZoomSlider) {
+  [
+    [cameraAlphaSlider, applyCameraSettings],
+    [cameraBetaSlider, applyCameraSettings],
+    [cameraZoomSlider, applyCameraSettings],
+  ].forEach(([slider, handler]) => {
+    slider.addEventListener("input", handler);
+    slider.addEventListener("change", handler);
+  });
+
+  applyCameraSettings();
+}
 
 const light = new HemisphericLight("light", new Vector3(0, 1, 0), scene);
 light.intensity = 1.1;
