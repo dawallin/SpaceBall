@@ -216,7 +216,9 @@ function updatePhysics(dt) {
 
   if (ball.state === "ready") {
     const openingThreshold = geometry.ballRadius * 0.6;
-    if (gap > openingThreshold) {
+    const atStartGate = ball.y <= 0.02;
+
+    if (gap > openingThreshold || atStartGate) {
       ball.velocity += accelDown * dtSeconds;
     } else {
       // Rails squeezing - encourage the ball to travel upward
