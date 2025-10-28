@@ -27,10 +27,12 @@
 
       <section class="playfield-wrapper">
         <canvas id="playfield" width="360" height="640" aria-label="Space Ball playfield"></canvas>
-        <aside class="tilt-control" aria-label="Tilt control">
-          <label for="tiltSlider" class="tilt-control__label">Rail Tilt</label>
+        <aside class="control-panel" aria-label="Game controls">
+          <section class="control-panel__card control-panel__card--tilt" aria-label="Tilt control">
+            <label for="tiltSlider" class="tilt-control__label">Rail Tilt</label>
             <input
               id="tiltSlider"
+              class="tilt-control__slider"
               type="range"
               min="0"
               max="100"
@@ -41,10 +43,63 @@
               aria-label="Adjust rail tilt"
               orient="vertical"
             />
-          <div class="tilt-control__ticks">
-            <span>steep</span>
-            <span>gentle</span>
-          </div>
+            <div class="tilt-control__ticks">
+              <span>steep</span>
+              <span>gentle</span>
+            </div>
+          </section>
+
+          <section class="control-panel__card control-panel__card--camera" aria-label="Camera tuning">
+            <h2 class="control-panel__title">Camera</h2>
+            <div class="camera-tuner__group">
+              <label for="cameraAlphaSlider" class="camera-tuner__label">
+                Orbit
+                <span id="cameraAlphaReadout" class="camera-tuner__value">20°</span>
+              </label>
+              <input
+                id="cameraAlphaSlider"
+                class="camera-tuner__slider"
+                type="range"
+                min="0"
+                max="360"
+                step="1"
+                value="20"
+                aria-label="Adjust camera orbit"
+              />
+            </div>
+            <div class="camera-tuner__group">
+              <label for="cameraBetaSlider" class="camera-tuner__label">
+                Pitch
+                <span id="cameraBetaReadout" class="camera-tuner__value">60°</span>
+              </label>
+              <input
+                id="cameraBetaSlider"
+                class="camera-tuner__slider"
+                type="range"
+                min="35"
+                max="110"
+                step="1"
+                value="60"
+                aria-label="Adjust camera pitch"
+              />
+            </div>
+            <div class="camera-tuner__group">
+              <label for="cameraZoomSlider" class="camera-tuner__label">
+                Zoom
+                <span id="cameraZoomReadout" class="camera-tuner__value">12.0</span>
+              </label>
+              <input
+                id="cameraZoomSlider"
+                class="camera-tuner__slider"
+                type="range"
+                min="9"
+                max="16"
+                step="0.1"
+                value="12"
+                aria-label="Adjust camera zoom"
+              />
+            </div>
+          </section>
         </aside>
       </section>
 
