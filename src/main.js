@@ -4,6 +4,7 @@ import {
   sliderValueToTilt,
   tiltToAcceleration,
   getRailX,
+  createPocketLayouts,
 } from "./control-logic.js";
 
 import {
@@ -424,7 +425,7 @@ const debugInterface = {
     },
   },
   getPocketLayout() {
-    return [];
+    return createPocketLayouts(geometry);
   },
 };
 

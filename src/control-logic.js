@@ -40,19 +40,19 @@ export function getRailX(geometry, state, yNorm, side) {
 
 export function createPocketLayouts(geometry) {
   const { centerX, bottomY, pocketRadius } = geometry;
-  const baseY = bottomY + pocketRadius * 1.6;
+  const baseY = bottomY - pocketRadius * 1.6;
   const spacing = pocketRadius * 2.4;
 
   return [
     { name: "Mercury", radius: pocketRadius, y: baseY, highlight: false },
-    { name: "Earth", radius: pocketRadius, y: baseY + spacing, highlight: false },
-    { name: "Mars", radius: pocketRadius, y: baseY + spacing * 2, highlight: false },
-    { name: "Jupiter", radius: pocketRadius, y: baseY + spacing * 3, highlight: false },
-    { name: "Saturn", radius: pocketRadius, y: baseY + spacing * 4, highlight: false },
+    { name: "Earth", radius: pocketRadius, y: baseY - spacing, highlight: false },
+    { name: "Mars", radius: pocketRadius, y: baseY - spacing * 2, highlight: false },
+    { name: "Jupiter", radius: pocketRadius, y: baseY - spacing * 3, highlight: false },
+    { name: "Saturn", radius: pocketRadius, y: baseY - spacing * 4, highlight: false },
     {
       name: "Pluto",
       radius: pocketRadius + 6,
-      y: baseY + spacing * 5 + pocketRadius * 0.9,
+      y: baseY - spacing * 5 - pocketRadius * 0.9,
       highlight: true,
     },
   ].map((pocket) => ({

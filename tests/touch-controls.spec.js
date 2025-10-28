@@ -86,6 +86,6 @@ test("scoring pockets stay centered under the rails", async ({ page }) => {
   ]);
 
   for (let i = 1; i < pockets.length; i += 1) {
-    expect(pockets[i].y).toBeGreaterThan(pockets[i - 1].y);
+    expect(pockets[i].y).toBeLessThan(pockets[i - 1].y);
   }
 });
