@@ -23,3 +23,8 @@ Feature: Dual-rail touch controls
     When the player presses either touch pad
     Then the active pad should display visual feedback indicating engagement
     And the feedback should disappear when the touch ends
+
+  Scenario: Simultaneous thumb presses suppress browser gestures
+    When the player touches both pads at the same time with their thumbs
+    Then each rail should continue to respond only to its corresponding thumb
+    And browser navigation gestures such as Safari's edge swipe should remain disabled while the touches are active

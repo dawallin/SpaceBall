@@ -1,3 +1,12 @@
+import {
+  clamp,
+  normalizedToOffset,
+  sliderValueToTilt,
+  tiltToAcceleration,
+  getRailX,
+  createPocketLayouts,
+} from "./control-logic.js";
+
 const canvas = document.getElementById("playfield");
 const ctx = canvas.getContext("2d");
 const tiltSlider = document.getElementById("tiltSlider");
@@ -45,36 +54,37 @@ const timing = {
   targetStep: 1000 / 60,
 };
 
-function sliderValueToTilt(sliderValue) {
-  const minTilt = 8; // degrees
-  const maxTilt = 28;
-  const ratio = Number(sliderValue) / 100;
-  return minTilt + (maxTilt - minTilt) * ratio;
-}
+let latestPocketLayout = [];
 
-function tiltToAcceleration(tiltDeg) {
-  const gravityBase = 40; // pixels per second^2
-  return gravityBase * Math.sin((tiltDeg * Math.PI) / 180);
-}
-
-function getRailX(yNorm, side) {
-  const topSpread = geometry.railTopSpread;
-  const bottomSpread = geometry.railBottomSpread;
-  const leftControl = clamp(state.leftOffset, -geometry.railTravel, geometry.railTravel);
-  const rightControl = clamp(state.rightOffset, -geometry.railTravel, geometry.railTravel);
-  const leftTop = geometry.centerX - topSpread / 2 + leftControl * 0.18;
-  const rightTop = geometry.centerX + topSpread / 2 + rightControl * 0.18;
-  const leftBottom = geometry.centerX - bottomSpread / 2 + leftControl;
-  const rightBottom = geometry.centerX + bottomSpread / 2 + rightControl;
-
+function handlePadDown(side, pointerId, normalized) {
+  const offset = normalizedToOffset(normalized, geometry.railTravel);
   if (side === "left") {
-    return leftTop + (leftBottom - leftTop) * yNorm;
+    state.leftPointer = pointerId;
+    state.leftOffset = offset;
+  } else {
+    state.rightPointer = pointerId;
+    state.rightOffset = offset;
   }
-  return rightTop + (rightBottom - rightTop) * yNorm;
 }
 
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
+function handlePadMove(side, pointerId, normalized) {
+  if (side === "left" && state.leftPointer !== pointerId) return;
+  if (side === "right" && state.rightPointer !== pointerId) return;
+  const offset = normalizedToOffset(normalized, geometry.railTravel);
+  if (side === "left") {
+    state.leftOffset = offset;
+  } else {
+    state.rightOffset = offset;
+  }
+}
+
+function handlePadUp(side, pointerId) {
+  if (side === "left" && state.leftPointer === pointerId) {
+    state.leftPointer = null;
+  }
+  if (side === "right" && state.rightPointer === pointerId) {
+    state.rightPointer = null;
+  }
 }
 
 function updateTilt(value) {
@@ -98,49 +108,78 @@ function normalisePointer(event, padElement) {
 }
 
 function bindTouchPad(padElement, side) {
-  padElement.addEventListener("pointerdown", (event) => {
-    padElement.setPointerCapture(event.pointerId);
-    padElement.classList.add("is-active");
-    if (side === "left") {
-      state.leftPointer = event.pointerId;
-      state.leftOffset = (normalisePointer(event, padElement) - 0.5) * 2 * geometry.railTravel;
-    } else {
-      state.rightPointer = event.pointerId;
-      state.rightOffset = (normalisePointer(event, padElement) - 0.5) * 2 * geometry.railTravel;
-    }
-  });
+  padElement.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      padElement.setPointerCapture(event.pointerId);
+      padElement.classList.add("is-active");
+      handlePadDown(side, event.pointerId, normalisePointer(event, padElement));
+    },
+    { passive: false }
+  );
 
-  padElement.addEventListener("pointermove", (event) => {
-    if (side === "left" && state.leftPointer !== event.pointerId) return;
-    if (side === "right" && state.rightPointer !== event.pointerId) return;
-    const normalized = normalisePointer(event, padElement);
-    const offset = (normalized - 0.5) * 2 * geometry.railTravel;
-    if (side === "left") {
-      state.leftOffset = offset;
-    } else {
-      state.rightOffset = offset;
-    }
-  });
+  padElement.addEventListener(
+    "pointermove",
+    (event) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      handlePadMove(side, event.pointerId, normalisePointer(event, padElement));
+    },
+    { passive: false }
+  );
 
-  padElement.addEventListener("pointerup", (event) => {
-    if (side === "left" && state.leftPointer === event.pointerId) {
-      state.leftPointer = null;
-    }
-    if (side === "right" && state.rightPointer === event.pointerId) {
-      state.rightPointer = null;
-    }
-    padElement.classList.remove("is-active");
-  });
+  padElement.addEventListener(
+    "pointerup",
+    (event) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      handlePadUp(side, event.pointerId);
+      padElement.classList.remove("is-active");
+    },
+    { passive: false }
+  );
 
-  padElement.addEventListener("pointercancel", () => {
-    if (side === "left") {
-      state.leftPointer = null;
-    } else {
-      state.rightPointer = null;
-    }
-    padElement.classList.remove("is-active");
-  });
+  padElement.addEventListener(
+    "pointercancel",
+    (event) => {
+      handlePadUp(side, event.pointerId);
+      padElement.classList.remove("is-active");
+    },
+    { passive: false }
+  );
 }
+
+const debugInterface = {
+  geometry,
+  get state() {
+    return state;
+  },
+  controls: {
+    pressPad(side, pointerId, normalized) {
+      const pad = side === "left" ? leftPad : rightPad;
+      pad.classList.add("is-active");
+      handlePadDown(side, pointerId, normalized);
+    },
+    movePad(side, pointerId, normalized) {
+      handlePadMove(side, pointerId, normalized);
+    },
+    releasePad(side, pointerId) {
+      const pad = side === "left" ? leftPad : rightPad;
+      pad.classList.remove("is-active");
+      handlePadUp(side, pointerId);
+    },
+  },
+  getPocketLayout() {
+    return latestPocketLayout.map((pocket) => ({ ...pocket }));
+  },
+};
+
+globalThis.__spaceBall = debugInterface;
 
 bindTouchPad(leftPad, "left");
 bindTouchPad(rightPad, "right");
@@ -158,7 +197,9 @@ function startScoreSequence() {
   state.score += 1;
   scoreValue.textContent = state.score;
   const exitX =
-    (getRailX(1, "left") + getRailX(1, "right")) / 2;
+    (getRailX(geometry, state, 1, "left") +
+      getRailX(geometry, state, 1, "right")) /
+    2;
   ball.state = "falling";
   ball.fallX = exitX;
   ball.fallY = geometry.bottomY + geometry.ballRadius;
@@ -169,8 +210,8 @@ function updatePhysics(dt) {
   const dtSeconds = dt / 1000;
   const accelDown = tiltToAcceleration(state.tilt);
   const yNorm = clamp(ball.y, 0, 1);
-  const leftX = getRailX(yNorm, "left");
-  const rightX = getRailX(yNorm, "right");
+  const leftX = getRailX(geometry, state, yNorm, "left");
+  const rightX = getRailX(geometry, state, yNorm, "right");
   const gap = rightX - leftX - geometry.ballRadius * 2;
 
   if (ball.state === "ready") {
@@ -230,13 +271,13 @@ function drawRails() {
   ctx.shadowBlur = 16;
 
   ctx.beginPath();
-  ctx.moveTo(getRailX(0, "left"), geometry.topY);
-  ctx.lineTo(getRailX(1, "left"), geometry.bottomY);
+  ctx.moveTo(getRailX(geometry, state, 0, "left"), geometry.topY);
+  ctx.lineTo(getRailX(geometry, state, 1, "left"), geometry.bottomY);
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.moveTo(getRailX(0, "right"), geometry.topY);
-  ctx.lineTo(getRailX(1, "right"), geometry.bottomY);
+  ctx.moveTo(getRailX(geometry, state, 0, "right"), geometry.topY);
+  ctx.lineTo(getRailX(geometry, state, 1, "right"), geometry.bottomY);
   ctx.stroke();
 
   ctx.shadowBlur = 0;
@@ -247,8 +288,8 @@ function drawBall() {
     return;
   }
   const yPos = geometry.topY + (geometry.bottomY - geometry.topY) * clamp(ball.y, 0, 1);
-  const xLeft = getRailX(clamp(ball.y, 0, 1), "left");
-  const xRight = getRailX(clamp(ball.y, 0, 1), "right");
+  const xLeft = getRailX(geometry, state, clamp(ball.y, 0, 1), "left");
+  const xRight = getRailX(geometry, state, clamp(ball.y, 0, 1), "right");
   const xPos = (xLeft + xRight) / 2;
 
   ctx.beginPath();
@@ -271,35 +312,31 @@ function drawFallingBall() {
 }
 
 function drawScoringPockets() {
-  const pocketLabels = [
-    { name: "Mercury", offset: -84 },
-    { name: "Earth", offset: -42 },
-    { name: "Mars", offset: 0 },
-    { name: "Jupiter", offset: 42 },
-    { name: "Saturn", offset: 84 },
-    { name: "Pluto", offset: 0, bottom: true },
-  ];
+  const pocketLayouts = createPocketLayouts(geometry);
+
+  latestPocketLayout = pocketLayouts.map((pocket) => ({
+    name: pocket.name,
+    x: pocket.x,
+    y: pocket.y,
+    radius: pocket.radius,
+  }));
 
   ctx.save();
-  ctx.translate(geometry.centerX, geometry.bottomY + geometry.pocketRadius * 1.8);
 
-  pocketLabels.forEach((pocket, index) => {
-    const radius = pocket.bottom ? geometry.pocketRadius + 6 : geometry.pocketRadius;
-    const y = pocket.bottom ? geometry.pocketRadius * 2 + 10 : index * 22;
-    const x = pocket.offset;
-
+  pocketLayouts.forEach((pocket) => {
     ctx.beginPath();
-    ctx.fillStyle = pocket.bottom ? "rgba(255, 220, 120, 0.35)" : "rgba(120, 180, 255, 0.25)";
-    ctx.strokeStyle = "rgba(200, 220, 255, 0.45)";
+    ctx.fillStyle = pocket.highlight ? "rgba(255, 220, 120, 0.35)" : "rgba(120, 180, 255, 0.25)";
+    ctx.strokeStyle = pocket.highlight ? "rgba(255, 235, 180, 0.45)" : "rgba(200, 220, 255, 0.45)";
     ctx.lineWidth = 2;
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.arc(pocket.x, pocket.y, pocket.radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = "rgba(240, 250, 255, 0.9)";
     ctx.font = "12px Rajdhani";
     ctx.textAlign = "center";
-    ctx.fillText(pocket.name, x, y + radius + 12);
+    ctx.textBaseline = "top";
+    ctx.fillText(pocket.name, pocket.x, pocket.y + pocket.radius + 6);
   });
 
   ctx.restore();
@@ -327,6 +364,8 @@ function loop(now) {
 
 resetBall();
 requestAnimationFrame(loop);
+
+debugInterface.ready = true;
 
 window.addEventListener("resize", () => {
   // keep slider feedback accurate during orientation changes
