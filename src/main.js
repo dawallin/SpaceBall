@@ -53,6 +53,7 @@ const geometry = {
   railBottomSpread: 3.6,
   railTravel: 1.2,
   railRadius: 0.11,
+  railDropLength: 1.1,
   gravityBase: 85,
   dropStartZ: 0,
   dropFloorZ: -5.6,
@@ -82,9 +83,28 @@ scene.clearColor = new Color4(0, 0, 0, 0);
 
 const boardPivot = new TransformNode("boardPivot", scene);
 
+const betaRange = {
+  min: Number(cameraBetaSlider?.min ?? 0),
+  max: Number(cameraBetaSlider?.max ?? 360),
+};
+const betaLimitPadding = 0.01;
+const safeLowerBetaDeg = Math.min(
+  betaRange.min + betaLimitPadding,
+  betaRange.max - betaLimitPadding
+);
+const safeUpperBetaDeg = Math.max(
+  betaRange.min + betaLimitPadding,
+  betaRange.max - betaLimitPadding
+);
+const initialBetaDegrees = clamp(
+  Number(cameraBetaSlider?.value ?? 60) || 0,
+  safeLowerBetaDeg,
+  safeUpperBetaDeg
+);
+
 const initialCameraSettings = {
   alpha: degToRad(cameraAlphaSlider?.value ?? 20),
-  beta: degToRad(cameraBetaSlider?.value ?? 60),
+  beta: degToRad(initialBetaDegrees),
   radius: Number(cameraZoomSlider?.value ?? 12),
 };
 
@@ -98,12 +118,27 @@ const camera = new ArcRotateCamera(
 );
 camera.lowerRadiusLimit = Number(cameraZoomSlider?.min ?? 9);
 camera.upperRadiusLimit = Number(cameraZoomSlider?.max ?? 16);
-camera.lowerBetaLimit = degToRad(cameraBetaSlider?.min ?? 35);
-camera.upperBetaLimit = degToRad(cameraBetaSlider?.max ?? 110);
+camera.lowerBetaLimit = degToRad(safeLowerBetaDeg);
+camera.upperBetaLimit = degToRad(safeUpperBetaDeg);
 camera.wheelPrecision = 120;
 camera.panningSensibility = 0;
 camera.attachControl(canvas, false);
 camera.inputs.clear();
+
+function buildRailPath(side) {
+  const topX = getRailX(geometry, state, 0, side);
+  const bottomX = getRailX(geometry, state, 1, side);
+
+  const topPoint = new Vector3(topX, geometry.topY, 0);
+  const bottomPoint = new Vector3(bottomX, geometry.bottomY, 0);
+  const dropPoint = new Vector3(
+    bottomX,
+    geometry.bottomY,
+    -geometry.railDropLength
+  );
+
+  return [topPoint, bottomPoint, dropPoint];
+}
 
 function applyCameraSettings() {
   if (!cameraAlphaSlider || !cameraBetaSlider || !cameraZoomSlider) {
@@ -111,11 +146,18 @@ function applyCameraSettings() {
   }
 
   const alphaDeg = clamp(Number(cameraAlphaSlider.value) || 0, 0, 360);
-  const betaDeg = clamp(
-    Number(cameraBetaSlider.value) || 0,
-    Number(cameraBetaSlider.min) || 35,
-    Number(cameraBetaSlider.max) || 110
+  const betaMin = Number(cameraBetaSlider.min) || 0;
+  const betaMax = Number(cameraBetaSlider.max) || 360;
+  const betaDeg = clamp(Number(cameraBetaSlider.value) || 0, betaMin, betaMax);
+  const safeBetaLower = Math.min(
+    betaMin + betaLimitPadding,
+    betaMax - betaLimitPadding
   );
+  const safeBetaUpper = Math.max(
+    betaMin + betaLimitPadding,
+    betaMax - betaLimitPadding
+  );
+  const safeBetaDeg = clamp(betaDeg, safeBetaLower, safeBetaUpper);
   const zoom = clamp(
     Number(cameraZoomSlider.value) || 0,
     Number(cameraZoomSlider.min) || 9,
@@ -123,7 +165,7 @@ function applyCameraSettings() {
   );
 
   camera.alpha = degToRad(alphaDeg);
-  camera.beta = degToRad(betaDeg);
+  camera.beta = degToRad(safeBetaDeg);
   camera.radius = zoom;
 
   if (cameraAlphaReadout) {
@@ -172,10 +214,7 @@ ballMaterial.diffuseColor = new Color3(1, 1, 1);
 ballMaterial.emissiveColor = new Color3(0.55, 0.7, 1);
 ballMaterial.specularColor = new Color3(0.9, 0.9, 0.9);
 
-const initialLeftPath = [
-  new Vector3(getRailX(geometry, state, 0, "left"), geometry.topY, 0),
-  new Vector3(getRailX(geometry, state, 1, "left"), geometry.bottomY, 0),
-];
+const initialLeftPath = buildRailPath("left");
 let leftRail = MeshBuilder.CreateTube(
   "leftRail",
   { path: initialLeftPath, radius: geometry.railRadius, updatable: true },
@@ -184,10 +223,7 @@ let leftRail = MeshBuilder.CreateTube(
 leftRail.material = railMaterial;
 leftRail.parent = boardPivot;
 
-const initialRightPath = [
-  new Vector3(getRailX(geometry, state, 0, "right"), geometry.topY, 0),
-  new Vector3(getRailX(geometry, state, 1, "right"), geometry.bottomY, 0),
-];
+const initialRightPath = buildRailPath("right");
 let rightRail = MeshBuilder.CreateTube(
   "rightRail",
   { path: initialRightPath, radius: geometry.railRadius, updatable: true },
@@ -230,10 +266,7 @@ function updateBoardTilt() {
 updateBoardTilt();
 
 function updateRailMeshes() {
-  const leftPath = [
-    new Vector3(getRailX(geometry, state, 0, "left"), geometry.topY, 0),
-    new Vector3(getRailX(geometry, state, 1, "left"), geometry.bottomY, 0),
-  ];
+  const leftPath = buildRailPath("left");
   leftRail = MeshBuilder.CreateTube(
     "leftRail",
     {
@@ -245,10 +278,7 @@ function updateRailMeshes() {
     scene
   );
 
-  const rightPath = [
-    new Vector3(getRailX(geometry, state, 0, "right"), geometry.topY, 0),
-    new Vector3(getRailX(geometry, state, 1, "right"), geometry.bottomY, 0),
-  ];
+  const rightPath = buildRailPath("right");
   rightRail = MeshBuilder.CreateTube(
     "rightRail",
     {
