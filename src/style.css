@@ -122,13 +122,14 @@ body {
 }
 
 .touch-zones {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 0;
 }
 
 .touch-pad {
   position: relative;
+  flex: 0 0 33.333%;
   border: none;
   border-radius: 20px;
   background: rgba(20, 35, 66, 0.9);
