@@ -4,33 +4,54 @@ import {
   sliderValueToTilt,
   tiltToAcceleration,
   getRailX,
-  createPocketLayouts,
 } from "./control-logic.js";
 
+import {
+  Engine,
+  Scene,
+  Vector3,
+  ArcRotateCamera,
+  HemisphericLight,
+  MeshBuilder,
+  Color3,
+  Color4,
+  StandardMaterial,
+  TransformNode,
+} from "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/+esm";
+import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Meshes/Builders/tubeBuilder.js";
+import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Meshes/Builders/sphereBuilder.js";
+import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Materials/standardMaterial.js";
+
 const canvas = document.getElementById("playfield");
-const ctx = canvas.getContext("2d");
 const tiltSlider = document.getElementById("tiltSlider");
 const tiltReadout = document.getElementById("tiltReadout");
 const scoreValue = document.getElementById("scoreValue");
 const leftPad = document.getElementById("leftPad");
 const rightPad = document.getElementById("rightPad");
 
+const tiltBounds = {
+  min: 8,
+  max: 28,
+};
+
 const geometry = {
-  width: canvas.width,
-  height: canvas.height,
-  centerX: canvas.width / 2,
-  topY: canvas.height * 0.12,
-  bottomY: canvas.height * 0.82,
-  pocketRadius: 22,
-  ballRadius: 14,
-  railTopSpread: 34,
-  railBottomSpread: 180,
-  railTravel: 90,
+  centerX: 0,
+  topY: 3.2,
+  bottomY: -4.4,
+  ballRadius: 0.35,
+  railTopSpread: 1.4,
+  railBottomSpread: 3.6,
+  railTravel: 1.2,
+  railRadius: 0.11,
+  gravityBase: 85,
+  dropStartZ: 0,
+  dropFloorZ: -5.6,
+  dropGravity: 22,
 };
 
 const state = {
   score: 0,
-  tilt: sliderValueToTilt(tiltSlider.value),
+  tilt: sliderValueToTilt(tiltSlider.value, tiltBounds),
   leftOffset: 0,
   rightOffset: 0,
   leftPointer: null,
@@ -40,21 +61,147 @@ const state = {
 tiltReadout.textContent = `${Math.round(state.tilt)}°`;
 tiltSlider.setAttribute("aria-valuenow", tiltSlider.value);
 
+const engine = new Engine(canvas, true, {
+  alpha: true,
+  preserveDrawingBuffer: true,
+  stencil: true,
+  disableWebGL2Support: false,
+});
+const scene = new Scene(engine);
+scene.clearColor = new Color4(0, 0, 0, 0);
+
+const boardPivot = new TransformNode("boardPivot", scene);
+
+const camera = new ArcRotateCamera(
+  "camera",
+  Math.PI / 1.7,
+  Math.PI / 2.6,
+  12.5,
+  new Vector3(0, -0.4, -0.8),
+  scene
+);
+camera.lowerRadiusLimit = 10;
+camera.upperRadiusLimit = 14;
+camera.wheelPrecision = 120;
+camera.panningSensibility = 0;
+camera.attachControl(canvas, false);
+camera.inputs.clear();
+
+const light = new HemisphericLight("light", new Vector3(0, 1, 0), scene);
+light.intensity = 1.1;
+light.specular = new Color3(0.2, 0.2, 0.2);
+
+const railMaterial = new StandardMaterial("railMaterial", scene);
+railMaterial.diffuseColor = new Color3(0.6, 0.72, 1.0);
+railMaterial.emissiveColor = new Color3(0.1, 0.25, 0.6);
+railMaterial.specularColor = new Color3(0.3, 0.4, 0.7);
+
+const ballMaterial = new StandardMaterial("ballMaterial", scene);
+ballMaterial.diffuseColor = new Color3(1, 1, 1);
+ballMaterial.emissiveColor = new Color3(0.55, 0.7, 1);
+ballMaterial.specularColor = new Color3(0.9, 0.9, 0.9);
+
+const initialLeftPath = [
+  new Vector3(getRailX(geometry, state, 0, "left"), geometry.topY, 0),
+  new Vector3(getRailX(geometry, state, 1, "left"), geometry.bottomY, 0),
+];
+let leftRail = MeshBuilder.CreateTube(
+  "leftRail",
+  { path: initialLeftPath, radius: geometry.railRadius, updatable: true },
+  scene
+);
+leftRail.material = railMaterial;
+leftRail.parent = boardPivot;
+
+const initialRightPath = [
+  new Vector3(getRailX(geometry, state, 0, "right"), geometry.topY, 0),
+  new Vector3(getRailX(geometry, state, 1, "right"), geometry.bottomY, 0),
+];
+let rightRail = MeshBuilder.CreateTube(
+  "rightRail",
+  { path: initialRightPath, radius: geometry.railRadius, updatable: true },
+  scene
+);
+rightRail.material = railMaterial;
+rightRail.parent = boardPivot;
+
+const ballMesh = MeshBuilder.CreateSphere(
+  "ball",
+  { diameter: geometry.ballRadius * 2 },
+  scene
+);
+ballMesh.material = ballMaterial;
+ballMesh.parent = boardPivot;
+
 const ball = {
-  y: 0,
+  progress: 0,
   velocity: 0,
-  state: "ready", // ready | falling | resetting
-  fallY: 0,
+  state: "ready",
   fallX: geometry.centerX,
+  fallY: geometry.topY,
+  fallZ: geometry.dropStartZ,
+  dropVelocity: 0,
   resetTimer: 0,
+  mesh: ballMesh,
 };
 
-const timing = {
-  lastTick: performance.now(),
-  targetStep: 1000 / 60,
-};
+function updateBoardTilt() {
+  const normalizedTilt = clamp(
+    (state.tilt - tiltBounds.min) / (tiltBounds.max - tiltBounds.min),
+    0,
+    1
+  );
+  const minAngle = Math.PI / 3.1;
+  const maxAngle = Math.PI / 2.2;
+  boardPivot.rotation.x = minAngle + (maxAngle - minAngle) * normalizedTilt;
+}
 
-let latestPocketLayout = [];
+updateBoardTilt();
+
+function updateRailMeshes() {
+  const leftPath = [
+    new Vector3(getRailX(geometry, state, 0, "left"), geometry.topY, 0),
+    new Vector3(getRailX(geometry, state, 1, "left"), geometry.bottomY, 0),
+  ];
+  leftRail = MeshBuilder.CreateTube(
+    "leftRail",
+    {
+      path: leftPath,
+      radius: geometry.railRadius,
+      updatable: true,
+      instance: leftRail,
+    },
+    scene
+  );
+
+  const rightPath = [
+    new Vector3(getRailX(geometry, state, 0, "right"), geometry.topY, 0),
+    new Vector3(getRailX(geometry, state, 1, "right"), geometry.bottomY, 0),
+  ];
+  rightRail = MeshBuilder.CreateTube(
+    "rightRail",
+    {
+      path: rightPath,
+      radius: geometry.railRadius,
+      updatable: true,
+      instance: rightRail,
+    },
+    scene
+  );
+}
+
+function positionBallOnRails() {
+  const clampedProgress = clamp(ball.progress, 0, 1);
+  const yPos =
+    geometry.topY + (geometry.bottomY - geometry.topY) * clampedProgress;
+  const leftX = getRailX(geometry, state, clampedProgress, "left");
+  const rightX = getRailX(geometry, state, clampedProgress, "right");
+  const xPos = (leftX + rightX) / 2;
+
+  ball.mesh.position.x = xPos;
+  ball.mesh.position.y = yPos;
+  ball.mesh.position.z = geometry.dropStartZ;
+}
 
 function handlePadDown(side, pointerId, normalized) {
   const offset = normalizedToOffset(normalized, geometry.railTravel);
@@ -88,9 +235,10 @@ function handlePadUp(side, pointerId) {
 }
 
 function updateTilt(value) {
-  state.tilt = sliderValueToTilt(value);
+  state.tilt = sliderValueToTilt(value, tiltBounds);
   tiltReadout.textContent = `${Math.round(state.tilt)}°`;
   tiltSlider.setAttribute("aria-valuenow", String(value));
+  updateBoardTilt();
 }
 
 tiltSlider.addEventListener("input", (event) => {
@@ -175,7 +323,7 @@ const debugInterface = {
     },
   },
   getPocketLayout() {
-    return latestPocketLayout.map((pocket) => ({ ...pocket }));
+    return [];
   },
 };
 
@@ -185,72 +333,95 @@ bindTouchPad(leftPad, "left");
 bindTouchPad(rightPad, "right");
 
 function resetBall() {
-  ball.y = 0;
+  ball.progress = 0;
   ball.velocity = 0;
   ball.state = "ready";
-  ball.fallY = geometry.topY;
   ball.fallX = geometry.centerX;
-  ball.resetTimer = 0;
+  ball.fallY = geometry.topY;
+  ball.fallZ = geometry.dropStartZ;
+  ball.dropVelocity = 0;
+  ball.mesh.isVisible = true;
+  positionBallOnRails();
 }
 
-function startScoreSequence() {
+function startScoreSequence(exitX) {
   state.score += 1;
   scoreValue.textContent = state.score;
-  const exitX =
-    (getRailX(geometry, state, 1, "left") +
-      getRailX(geometry, state, 1, "right")) /
-    2;
   ball.state = "falling";
   ball.fallX = exitX;
-  ball.fallY = geometry.bottomY + geometry.ballRadius;
-  ball.velocity = 0;
+  ball.fallY = geometry.bottomY;
+  ball.fallZ = geometry.dropStartZ;
+  ball.dropVelocity = 0;
+  ball.mesh.position.x = exitX;
+  ball.mesh.position.y = geometry.bottomY;
+  ball.mesh.position.z = geometry.dropStartZ;
 }
 
 function updatePhysics(dt) {
   const dtSeconds = dt / 1000;
-  const accelDown = tiltToAcceleration(state.tilt);
-  const yNorm = clamp(ball.y, 0, 1);
-  const leftX = getRailX(geometry, state, yNorm, "left");
-  const rightX = getRailX(geometry, state, yNorm, "right");
+  const accelDown = tiltToAcceleration(state.tilt, geometry.gravityBase);
+  const clampedProgress = clamp(ball.progress, 0, 1);
+  const leftX = getRailX(geometry, state, clampedProgress, "left");
+  const rightX = getRailX(geometry, state, clampedProgress, "right");
   const gap = rightX - leftX - geometry.ballRadius * 2;
 
   if (ball.state === "ready") {
     const openingThreshold = geometry.ballRadius * 0.6;
-    const atStartGate = ball.y <= 0.02;
+    const atStartGate = clampedProgress <= 0.01;
 
     if (gap > openingThreshold || atStartGate) {
       ball.velocity += accelDown * dtSeconds;
     } else {
-      // Rails squeezing - encourage the ball to travel upward
-      ball.velocity -= accelDown * 1.15 * dtSeconds;
+      ball.velocity -= accelDown * 1.2 * dtSeconds;
     }
 
     ball.velocity *= 0.985;
-    ball.y += (ball.velocity / (geometry.bottomY - geometry.topY)) * dtSeconds;
 
-    if (ball.y < 0) {
-      ball.y = 0;
+    const span = Math.abs(geometry.bottomY - geometry.topY);
+    ball.progress += (ball.velocity / span) * dtSeconds;
+
+    if (ball.progress < 0) {
+      ball.progress = 0;
       ball.velocity = 0;
     }
 
-    if (ball.y > 1) {
-      ball.y = 1;
+    if (ball.progress > 1) {
+      ball.progress = 1;
     }
 
-    const exitGap = rightX - leftX - geometry.ballRadius * 2;
-    if (ball.y >= 0.995 && exitGap > geometry.ballRadius * 0.8) {
-      startScoreSequence();
+    const exitGap =
+      getRailX(geometry, state, 1, "right") -
+      getRailX(geometry, state, 1, "left") -
+      geometry.ballRadius * 2;
+    if (ball.progress >= 0.995 && exitGap > geometry.ballRadius * 0.8) {
+      const exitX =
+        (getRailX(geometry, state, 1, "left") +
+          getRailX(geometry, state, 1, "right")) /
+        2;
+      startScoreSequence(exitX);
     }
 
-    if (ball.y > 0 && gap < geometry.ballRadius * 0.4 && ball.velocity > 0) {
-      // When the gap narrows significantly the ball reverses course.
+    if (ball.progress > 0 && gap < geometry.ballRadius * 0.4 && ball.velocity > 0) {
       ball.velocity = Math.min(ball.velocity, 0);
     }
+
+    positionBallOnRails();
   } else if (ball.state === "falling") {
-    ball.fallY += (accelDown * 1.6) * dtSeconds;
-    if (ball.fallY > geometry.height + geometry.ballRadius * 2) {
+    ball.dropVelocity += geometry.dropGravity * dtSeconds;
+    ball.fallZ -= ball.dropVelocity * dtSeconds;
+    if (ball.fallZ <= geometry.dropFloorZ) {
+      ball.fallZ = geometry.dropFloorZ;
+      ball.mesh.position.x = ball.fallX;
+      ball.mesh.position.y = ball.fallY;
+      ball.mesh.position.z = ball.fallZ;
+      ball.velocity = 0;
       ball.state = "resetting";
-      ball.resetTimer = 1.2; // seconds
+      ball.resetTimer = 1.2;
+      ball.mesh.isVisible = false;
+    } else {
+      ball.mesh.position.x = ball.fallX;
+      ball.mesh.position.y = ball.fallY;
+      ball.mesh.position.z = ball.fallZ;
     }
   } else if (ball.state === "resetting") {
     ball.resetTimer -= dtSeconds;
@@ -260,116 +431,30 @@ function updatePhysics(dt) {
   }
 }
 
-function drawRails() {
-  const gradient = ctx.createLinearGradient(0, geometry.topY, 0, geometry.bottomY);
-  gradient.addColorStop(0, "rgba(120, 160, 255, 0.9)");
-  gradient.addColorStop(1, "rgba(70, 110, 220, 0.7)");
+const timing = {
+  lastTick: performance.now(),
+};
 
-  ctx.lineWidth = 12;
-  ctx.lineCap = "round";
-
-  ctx.strokeStyle = gradient;
-  ctx.shadowColor = "rgba(0,0,0,0.45)";
-  ctx.shadowBlur = 16;
-
-  ctx.beginPath();
-  ctx.moveTo(getRailX(geometry, state, 0, "left"), geometry.topY);
-  ctx.lineTo(getRailX(geometry, state, 1, "left"), geometry.bottomY);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(getRailX(geometry, state, 0, "right"), geometry.topY);
-  ctx.lineTo(getRailX(geometry, state, 1, "right"), geometry.bottomY);
-  ctx.stroke();
-
-  ctx.shadowBlur = 0;
-}
-
-function drawBall() {
-  if (ball.state === "falling") {
-    return;
-  }
-  const yPos = geometry.topY + (geometry.bottomY - geometry.topY) * clamp(ball.y, 0, 1);
-  const xLeft = getRailX(geometry, state, clamp(ball.y, 0, 1), "left");
-  const xRight = getRailX(geometry, state, clamp(ball.y, 0, 1), "right");
-  const xPos = (xLeft + xRight) / 2;
-
-  ctx.beginPath();
-  ctx.fillStyle = "#ffffff";
-  ctx.shadowColor = "rgba(255,255,255,0.6)";
-  ctx.shadowBlur = 12;
-  ctx.arc(xPos, yPos, geometry.ballRadius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-}
-
-function drawFallingBall() {
-  ctx.beginPath();
-  ctx.fillStyle = "#ffffff";
-  ctx.shadowColor = "rgba(255,255,255,0.6)";
-  ctx.shadowBlur = 12;
-  ctx.arc(ball.fallX, ball.fallY, geometry.ballRadius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-}
-
-function drawScoringPockets() {
-  const pocketLayouts = createPocketLayouts(geometry);
-
-  latestPocketLayout = pocketLayouts.map((pocket) => ({
-    name: pocket.name,
-    x: pocket.x,
-    y: pocket.y,
-    radius: pocket.radius,
-  }));
-
-  ctx.save();
-
-  pocketLayouts.forEach((pocket) => {
-    ctx.beginPath();
-    ctx.fillStyle = pocket.highlight ? "rgba(255, 220, 120, 0.35)" : "rgba(120, 180, 255, 0.25)";
-    ctx.strokeStyle = pocket.highlight ? "rgba(255, 235, 180, 0.45)" : "rgba(200, 220, 255, 0.45)";
-    ctx.lineWidth = 2;
-    ctx.arc(pocket.x, pocket.y, pocket.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = "rgba(240, 250, 255, 0.9)";
-    ctx.font = "12px Rajdhani";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.fillText(pocket.name, pocket.x, pocket.y + pocket.radius + 6);
-  });
-
-  ctx.restore();
-}
-
-function render() {
-  ctx.clearRect(0, 0, geometry.width, geometry.height);
-  drawScoringPockets();
-  drawRails();
-  drawBall();
-  if (ball.state === "falling") {
-    drawFallingBall();
-  }
-}
-
-function loop(now) {
+function updateFrame() {
+  const now = performance.now();
   const delta = now - timing.lastTick;
   timing.lastTick = now;
 
   updatePhysics(delta);
-  render();
-
-  requestAnimationFrame(loop);
+  updateRailMeshes();
+  scene.render();
 }
 
 resetBall();
-requestAnimationFrame(loop);
+updateRailMeshes();
+
+timing.lastTick = performance.now();
+engine.runRenderLoop(updateFrame);
 
 debugInterface.ready = true;
 
 window.addEventListener("resize", () => {
-  // keep slider feedback accurate during orientation changes
+  engine.resize();
   updateTilt(tiltSlider.value);
 });
+
