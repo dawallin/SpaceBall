@@ -1,76 +1,115 @@
 // === Loader/Debug utilities ===
-const statusEl = document.getElementById('status-bar');
-const dbgEl = document.getElementById('debug-panel');
+const status = document.getElementById('status-bar');
 const url = new URL(location.href);
-const DEBUG_MODE = url.searchParams.has('debug') || false;
+const DEBUG_MODE = url.searchParams.has('debug');
 
-// in-memory log of steps
-const loadLog = [];
-let lastUpdateTs = performance.now();
+const debugPanel = document.createElement('div');
+debugPanel.id = 'debug-panel';
+debugPanel.style.cssText = `
+  position: fixed;
+  top: 40px;
+  left: 0;
+  width: 100%;
+  max-height: 35vh;
+  overflow: auto;
+  background: #0b1022;
+  color: #d9e8ff;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 6px;
+  z-index: 9998;
+  display: ${DEBUG_MODE ? 'block' : 'none'};
+`;
+document.body.appendChild(debugPanel);
 
-function logLine(text) {
-  const ts = (performance.now() / 1000).toFixed(3);
-  const line = `[${ts}s] ${text}`;
-  loadLog.push(line);
-  console.log('[SpaceBall]', text);
-  if (DEBUG_MODE && dbgEl) {
-    dbgEl.style.display = 'block';
-    const div = document.createElement('div');
-    div.textContent = line;
-    dbgEl.appendChild(div);
+function logDebug(message, color) {
+  console.log('[SpaceBall]', message);
+  if (status) {
+    status.textContent = message;
+    if (color) status.style.background = color;
+  }
+  if (DEBUG_MODE) {
+    const line = document.createElement('div');
+    line.textContent = message;
+    debugPanel.appendChild(line);
   }
 }
 
-function setStatus(text, color) {
+const statusHistory = [];
+let lastUpdateTs = performance.now();
+let lastKnownColor = status ? getComputedStyle(status).backgroundColor : '#003366';
+
+function recordStatus(message, color) {
   lastUpdateTs = performance.now();
-  if (statusEl) {
-    statusEl.textContent = text;
-    if (color) statusEl.style.background = color;
-    statusEl.title = loadLog.slice(-10).join('\n');
+  if (color) {
+    lastKnownColor = color;
   }
-  logLine(text);
+  const entry = `[${(performance.now() / 1000).toFixed(3)}s] ${message}`;
+  statusHistory.push(entry);
+  if (statusHistory.length > 60) {
+    statusHistory.shift();
+  }
+  if (status) {
+    if (!color && lastKnownColor) {
+      status.style.background = lastKnownColor;
+    }
+    status.title = statusHistory.slice(-10).join('\n');
+  }
+}
+
+function updateStatus(message, color) {
+  logDebug(message, color);
+  recordStatus(message, color);
+}
+
+function logTrace(message) {
+  console.log('[SpaceBall]', message);
+  if (DEBUG_MODE) {
+    const line = document.createElement('div');
+    line.textContent = message;
+    debugPanel.appendChild(line);
+  }
 }
 
 async function step(name, fn, colorWorking = '#0066cc', colorDone = '#118833') {
   const t0 = performance.now();
-  setStatus(`${name}…`, colorWorking);
+  updateStatus(`${name}…`, colorWorking);
   try {
     const result = await fn();
     const dt = (performance.now() - t0).toFixed(1);
-    setStatus(`${name} ✔ (${dt} ms)`, colorDone);
+    updateStatus(`${name} ✔ (${dt} ms)`, colorDone);
     return result;
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
     const dt = (performance.now() - t0).toFixed(1);
-    setStatus(`❌ ${name} failed (${dt} ms): ${msg}`, 'darkred');
-    logLine(`STACK: ${err && err.stack ? err.stack : '(no stack)'}`);
+    updateStatus(`❌ ${name} failed (${dt} ms): ${msg}`, 'darkred');
+    logTrace(`STACK: ${err && err.stack ? err.stack : '(no stack)'}`);
     throw err;
   }
 }
 
 window.addEventListener('error', (e) => {
-  setStatus(`❌ Error: ${e.message}`, 'darkred');
-  logLine(`ERROR SRC: ${e.filename}:${e.lineno}:${e.colno}`);
+  updateStatus(`❌ Global error: ${e.message}`, 'darkred');
 });
 window.addEventListener('unhandledrejection', (e) => {
-  setStatus(`❌ Unhandled rejection: ${e.reason}`, 'darkred');
-  logLine(`REJECTION: ${e.reason}`);
+  updateStatus(`❌ Promise rejection: ${e.reason}`, 'darkred');
 });
 
 setInterval(() => {
   const delta = performance.now() - lastUpdateTs;
-  if (delta > 3000 && statusEl) {
-    statusEl.style.background = '#cc9900';
-    if (!statusEl.textContent.includes('(still working)')) {
-      setStatus(`${statusEl.textContent} (still working)`, '#cc9900');
+  if (delta > 3000 && status) {
+    if (!status.textContent.includes('(still working)')) {
+      updateStatus(`${status.textContent} (still working)`, '#cc9900');
+    } else {
+      status.style.background = '#cc9900';
     }
   }
 }, 1500);
 
-logLine(`UA: ${navigator.userAgent}`);
-logLine(`Online: ${navigator.onLine}`);
-logLine(`Location: ${location.href}`);
-logLine(`ReadyState: ${document.readyState}`);
+logTrace(`UA: ${navigator.userAgent}`);
+logTrace(`Online: ${navigator.onLine}`);
+logTrace(`Location: ${location.href}`);
+logTrace(`ReadyState: ${document.readyState}`);
 
 let clamp;
 let normalizedToOffset;
@@ -129,8 +168,10 @@ function degToRad(degrees) {
 (async function bootstrap() {
   try {
     await step('Verify Babylon global', async () => {
-      if (!window.BABYLON) {
+      if (typeof window.BABYLON === 'undefined') {
         throw new Error('BABYLON global missing (babylon.js not loaded)');
+      } else {
+        logDebug('✅ Babylon.js successfully detected.');
       }
     });
 
