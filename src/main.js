@@ -1,5 +1,8 @@
 // === Loader/Debug utilities ===
 const status = document.getElementById('status-bar');
+if (!status) {
+  console.warn('⚠ status-bar element not found in DOM — debugging overlay disabled.');
+}
 const url = new URL(location.href);
 const DEBUG_MODE = url.searchParams.has('debug');
 
@@ -62,6 +65,15 @@ function updateStatus(message, color) {
   recordStatus(message, color);
 }
 
+function setStatus(text, color) {
+  if (typeof status === 'undefined' || !status) {
+    console.warn('⚠ status element missing, skipping update:', text);
+    console.log('[SpaceBall]', text);
+    return;
+  }
+  updateStatus(text, color);
+}
+
 function logTrace(message) {
   console.log('[SpaceBall]', message);
   if (DEBUG_MODE) {
@@ -72,6 +84,9 @@ function logTrace(message) {
 }
 
 async function step(name, fn, colorWorking = '#0066cc', colorDone = '#118833') {
+  if (typeof status === 'undefined' || !status) {
+    console.warn('⚠ status element missing, skipping update:', `${name}…`);
+  }
   const t0 = performance.now();
   updateStatus(`${name}…`, colorWorking);
   try {
@@ -89,17 +104,50 @@ async function step(name, fn, colorWorking = '#0066cc', colorDone = '#118833') {
 }
 
 window.addEventListener('error', (e) => {
-  updateStatus(`❌ Global error: ${e.message}`, 'darkred');
+  setStatus(`❌ JS crash: ${e.message}`, 'darkred');
+  const crashBanner = document.createElement('div');
+  crashBanner.style.cssText = `
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #aa0000; color: #fff;
+    font-family: monospace; font-size: 12px;
+    padding: 6px 10px; z-index: 10000;
+    max-height: 20vh; overflow: auto;
+  `;
+  const stack = e.error && e.error.stack ? e.error.stack : '';
+  crashBanner.textContent = '❌ ' + e.message + '\n' + stack;
+  document.body.appendChild(crashBanner);
 });
+
 window.addEventListener('unhandledrejection', (e) => {
-  updateStatus(`❌ Promise rejection: ${e.reason}`, 'darkred');
+  const reasonText =
+    typeof e.reason === 'string'
+      ? e.reason
+      : e.reason && e.reason.message
+      ? e.reason.message
+      : String(e.reason);
+  setStatus(`❌ Promise rejection: ${reasonText}`, 'darkred');
+  const crashBanner = document.createElement('div');
+  crashBanner.style.cssText = `
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #aa0000; color: #fff;
+    font-family: monospace; font-size: 12px;
+    padding: 6px 10px; z-index: 10000;
+    max-height: 20vh; overflow: auto;
+  `;
+  const reasonStack = e.reason && e.reason.stack ? `\n${e.reason.stack}` : '';
+  crashBanner.textContent = '❌ Promise Rejection: ' + reasonText + reasonStack;
+  document.body.appendChild(crashBanner);
 });
 
 setInterval(() => {
   const delta = performance.now() - lastUpdateTs;
   if (delta > 3000 && status) {
-    if (!status.textContent.includes('(still working)')) {
-      updateStatus(`${status.textContent} (still working)`, '#cc9900');
+    const currentText = status.textContent || '';
+    if (currentText.trim().startsWith('❌')) {
+      return;
+    }
+    if (!currentText.includes('(still working)')) {
+      updateStatus(`${currentText} (still working)`, '#cc9900');
     } else {
       status.style.background = '#cc9900';
     }
@@ -907,7 +955,7 @@ function degToRad(degrees) {
 
     if (!DEBUG_MODE) {
       setTimeout(() => {
-        if (statusEl) statusEl.style.display = 'none';
+        if (status) status.style.display = 'none';
         if (dbgEl) dbgEl.style.display = 'none';
       }, 2500);
     } else {
@@ -915,7 +963,7 @@ function degToRad(degrees) {
     }
   } catch (err) {
     const message = err && err.message ? err.message : String(err);
-    if (!statusEl || !statusEl.textContent.startsWith('❌')) {
+    if (!status || !status.textContent.startsWith('❌')) {
       setStatus(`❌ Bootstrap failure: ${message}`, 'darkred');
     }
     logLine(`Bootstrap error stack: ${err && err.stack ? err.stack : '(no stack)'}`);
