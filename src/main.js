@@ -6,6 +6,13 @@ const scriptLoadResults = ['babylon.js', 'ammo.js'].map((src) => {
 });
 console.log('Document readyState:', document.readyState);
 
+if (document.readyState === 'loading') {
+  console.log('⏳ Waiting for DOM ready...');
+  document.addEventListener('DOMContentLoaded', () => {
+    console.log('✅ DOM ready, continuing...');
+  });
+}
+
 const status = document.getElementById('status-bar');
 function logLine(msg) {
   console.log('[SpaceBall]', msg);
@@ -183,10 +190,12 @@ function degToRad(degrees) {
 (async function bootstrap() {
   try {
     await step('Verify Babylon global', async () => {
+      const t0 = performance.now();
       if (typeof window.BABYLON === 'undefined') {
-        throw new Error('BABYLON global missing (babylon.js not loaded)');
+        throw new Error('BABYLON global missing (babylon.js not ready)');
       } else {
-        logLine('✅ Babylon.js successfully detected');
+        const dt = (performance.now() - t0).toFixed(1);
+        logLine(`✅ Babylon.js detected after ${dt}ms`);
       }
     });
 
