@@ -261,7 +261,8 @@ function updateBoardTilt() {
   );
   const minAngle = Math.PI / 3.1;
   const maxAngle = Math.PI / 2.2;
-  boardPivot.rotation.x = minAngle + (maxAngle - minAngle) * normalizedTilt;
+  const tiltAngle = minAngle + (maxAngle - minAngle) * normalizedTilt;
+  boardPivot.rotation.x = -tiltAngle;
 }
 
 updateBoardTilt();
