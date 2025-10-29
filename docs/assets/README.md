@@ -5,6 +5,8 @@ Store shared reference imagery and concept sketches in this directory so they ca
 ## Current references
 - `space_ball_sketch.png` – overall board layout used by `docs/specs/core_gameplay.feature`.
 - `thumb_control_sketch.png` – left/right thumb interaction used by `docs/specs/touch_controls.feature`.
+- `spaceball_state_starting_position.jpeg` – neutral orbital position before propulsion, referenced by `docs/specs/spaceball_physics.feature`.
+- `spaceball_state_goal_capture.jpeg` – capture-phase energy transfer, referenced by `docs/specs/spaceball_physics.feature`.
 
 ## Adding a New Visual Reference
 - Save the asset using a descriptive snake_case filename (for example, `space_ball_sketch.png`).
