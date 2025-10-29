@@ -510,8 +510,8 @@ bindTouchPad(rightPad, "right");
 
 function loadAmmoModule() {
   const typedModules = [
-    "https://cdn.jsdelivr.net/npm/ammojs-typed@1.0.6/ammo.wasm.js",
-    "https://cdn.jsdelivr.net/npm/ammojs-typed@1.0.6/ammo.js",
+    "https://cdn.jsdelivr.net/npm/ammojs-typed@1.0.6/ammo/ammo.wasm.js",
+    "https://cdn.jsdelivr.net/npm/ammojs-typed@1.0.6/ammo/ammo.js",
   ];
 
   const tryTypedModule = (index = 0) => {
