@@ -1,12 +1,4 @@
-import {
-  clamp,
-  normalizedToOffset,
-  sliderValueToTilt,
-  getRailX,
-  createPocketLayouts,
-} from "./control-logic.js";
-
-import {
+const {
   Engine,
   Scene,
   Vector3,
@@ -23,35 +15,16 @@ import {
   PhysicsMotionType,
   PhysicsShapeType,
   AmmoJSPlugin,
-} from "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/index.js";
-import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Meshes/Builders/tubeBuilder.js";
-import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Meshes/Builders/sphereBuilder.js";
-import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Materials/standardMaterial.js";
+} = BABYLON;
+
+let clamp;
+let normalizedToOffset;
+let sliderValueToTilt;
+let getRailX;
+let createPocketLayouts;
 
 function degToRad(degrees) {
   return (Number(degrees) * Math.PI) / 180;
-}
-
-async function loadAmmoModule() {
-  const ammoGlobal = globalThis.Ammo;
-  if (!ammoGlobal) {
-    throw new Error("Ammo global factory was not found");
-  }
-
-  let ammoModule;
-  if (typeof ammoGlobal === "function") {
-    ammoModule = await ammoGlobal();
-  } else if (ammoGlobal && typeof ammoGlobal.then === "function") {
-    ammoModule = await ammoGlobal;
-  } else {
-    ammoModule = ammoGlobal;
-  }
-
-  if (ammoModule && typeof ammoModule.Ammo === "function") {
-    ammoModule = await ammoModule.Ammo();
-  }
-
-  return ammoModule;
 }
 
 const canvas = document.getElementById("playfield");
@@ -67,14 +40,38 @@ const cameraAlphaReadout = document.getElementById("cameraAlphaReadout");
 const cameraBetaReadout = document.getElementById("cameraBetaReadout");
 const cameraZoomReadout = document.getElementById("cameraZoomReadout");
 const statusBar = document.getElementById("status-bar");
-function setStatus(text, color) {
-  if (!statusBar) return;
+let setStatus = function setStatusMessage(text, color) {
+  if (!statusBar) {
+    return;
+  }
   statusBar.textContent = text;
   if (color) {
     statusBar.style.background = color;
   }
   console.log("[SpaceBall]", text);
-}
+};
+
+let lastStatusUpdate = Date.now();
+let lastStatusMessage = statusBar?.textContent ?? "";
+setInterval(() => {
+  if (!statusBar) {
+    return;
+  }
+
+  if (Date.now() - lastStatusUpdate > 3000) {
+    statusBar.style.background = "#ffaa00";
+    if (!statusBar.textContent?.includes("(still working...)")) {
+      statusBar.textContent = `${lastStatusMessage} (still working...)`;
+    }
+  }
+}, 3000);
+
+const internalSetStatus = setStatus;
+setStatus = function updateStatus(text, color) {
+  lastStatusUpdate = Date.now();
+  lastStatusMessage = text;
+  internalSetStatus(text, color);
+};
 
 const tiltBounds = {
   min: 8,
@@ -100,7 +97,7 @@ const geometry = {
 
 const state = {
   score: 0,
-  tilt: sliderValueToTilt(tiltSlider.value, tiltBounds),
+  tilt: 0,
   leftOffset: 0,
   rightOffset: 0,
   leftPointer: null,
@@ -110,27 +107,45 @@ const state = {
 
 (async function bootstrap() {
   try {
-    setStatus("Loading Ammo.js...");
-    const ammoModule = await loadAmmoModule();
-    setStatus("Ammo.js loaded");
+    setStatus("Loading control logic...", "#003977");
+    ({
+      clamp,
+      normalizedToOffset,
+      sliderValueToTilt,
+      getRailX,
+      createPocketLayouts,
+    } = await import("./control-logic.js"));
+    setStatus("Control logic ready ✔", "#004488");
 
-    tiltReadout.textContent = `${Math.round(state.tilt)}°`;
-    tiltSlider.setAttribute("aria-valuenow", tiltSlider.value);
+    state.tilt = sliderValueToTilt(tiltSlider?.value ?? 0, tiltBounds);
+    if (tiltReadout) {
+      tiltReadout.textContent = `${Math.round(state.tilt)}°`;
+    }
+    if (tiltSlider) {
+      tiltSlider.setAttribute("aria-valuenow", tiltSlider.value);
+    }
 
-    setStatus("Creating Babylon engine...");
+    setStatus("Loading Ammo.js...", "#004488");
+    const ammoModule = await Ammo();
+    setStatus("Ammo.js loaded ✔", "#0055aa");
+
+    if (!canvas) {
+      throw new Error("Playfield canvas element not found");
+    }
+
+    setStatus("Creating Babylon engine...", "#0066cc");
     const engine = new Engine(canvas, true, {
       alpha: true,
       preserveDrawingBuffer: true,
       stencil: true,
       disableWebGL2Support: false,
     });
+    setStatus("Babylon engine ready ✔", "#0077dd");
+
+    setStatus("Creating scene...", "#0088ee");
     const scene = new Scene(engine);
     scene.clearColor = new Color4(0, 0, 0, 0);
-
-    setStatus("Babylon engine ready");
-    setStatus("Creating game objects...");
-
-    const boardPivot = new TransformNode("boardPivot", scene);
+    setStatus("Scene created ✔", "#0099ff");
 
     const betaRange = {
       min: Number(cameraBetaSlider?.min ?? 0),
@@ -249,9 +264,17 @@ const state = {
       applyCameraSettings();
     }
 
+    setStatus("Adding lighting...", "#00aaee");
+
     const light = new HemisphericLight("light", new Vector3(0, 1, 0), scene);
     light.intensity = 1.1;
     light.specular = new Color3(0.2, 0.2, 0.2);
+
+    setStatus("Light added ✔", "#00bbcc");
+
+    setStatus("Creating game objects...", "#00ee55");
+
+    const boardPivot = new TransformNode("boardPivot", scene);
 
     const railMaterial = new StandardMaterial("railMaterial", scene);
     railMaterial.diffuseColor = new Color3(0.6, 0.72, 1.0);
@@ -579,66 +602,63 @@ const state = {
     }
 
     function initialisePhysics(ammoModule) {
-      setStatus("Enabling physics...");
-
       const plugin = new AmmoJSPlugin(true, ammoModule);
-        scene.enablePhysics(new Vector3(0, -geometry.gravityBase, 0), plugin);
-        const enginePhysics = scene.getPhysicsEngine();
-        enginePhysics?.setTimeStep(1 / 240);
-        if (plugin.setSubTimeStep) {
-          plugin.setSubTimeStep(1 / 480);
-        }
+      scene.enablePhysics(new Vector3(0, -geometry.gravityBase, 0), plugin);
+      const enginePhysics = scene.getPhysicsEngine();
+      enginePhysics?.setTimeStep(1 / 240);
+      if (plugin.setSubTimeStep) {
+        plugin.setSubTimeStep(1 / 480);
+      }
 
-        const material = new PhysicsMaterial();
-        material.friction = 0.68;
-        material.restitution = 0.02;
-        material.rollingFriction = 0.06;
+      const material = new PhysicsMaterial();
+      material.friction = 0.68;
+      material.restitution = 0.02;
+      material.rollingFriction = 0.06;
 
-        const ballAggregate = new PhysicsAggregate(
-          ball.mesh,
-          PhysicsShapeType.SPHERE,
-          {
-            mass: 0.18,
-            restitution: material.restitution,
-            friction: material.friction,
-          },
-          scene
-        );
-        ballAggregate.body.setMotionType?.(PhysicsMotionType.DYNAMIC);
-        ballAggregate.body.setLinearDamping?.(0.08);
-        ballAggregate.body.setAngularDamping?.(0.22);
+      const ballAggregate = new PhysicsAggregate(
+        ball.mesh,
+        PhysicsShapeType.SPHERE,
+        {
+          mass: 0.18,
+          restitution: material.restitution,
+          friction: material.friction,
+        },
+        scene
+      );
+      ballAggregate.body.setMotionType?.(PhysicsMotionType.DYNAMIC);
+      ballAggregate.body.setLinearDamping?.(0.08);
+      ballAggregate.body.setAngularDamping?.(0.22);
 
-        const leftAggregate = new PhysicsAggregate(
-          leftRailCollider,
-          PhysicsShapeType.CYLINDER,
-          {
-            mass: 0,
-            restitution: material.restitution,
-            friction: material.friction,
-          },
-          scene
-        );
-        leftAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
+      const leftAggregate = new PhysicsAggregate(
+        leftRailCollider,
+        PhysicsShapeType.CYLINDER,
+        {
+          mass: 0,
+          restitution: material.restitution,
+          friction: material.friction,
+        },
+        scene
+      );
+      leftAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
 
-        const rightAggregate = new PhysicsAggregate(
-          rightRailCollider,
-          PhysicsShapeType.CYLINDER,
-          {
-            mass: 0,
-            restitution: material.restitution,
-            friction: material.friction,
-          },
-          scene
-        );
-        rightAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
+      const rightAggregate = new PhysicsAggregate(
+        rightRailCollider,
+        PhysicsShapeType.CYLINDER,
+        {
+          mass: 0,
+          restitution: material.restitution,
+          friction: material.friction,
+        },
+        scene
+      );
+      rightAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
 
-        physicsState.plugin = plugin;
-        physicsState.material = material;
-        physicsState.ballAggregate = ballAggregate;
-        physicsState.leftAggregate = leftAggregate;
-        physicsState.rightAggregate = rightAggregate;
-        physicsState.ready = true;
-      setStatus("Physics enabled");
+      physicsState.plugin = plugin;
+      physicsState.material = material;
+      physicsState.ballAggregate = ballAggregate;
+      physicsState.leftAggregate = leftAggregate;
+      physicsState.rightAggregate = rightAggregate;
+      physicsState.ready = true;
     }
 
     function syncRailBodies(dtSeconds) {
@@ -749,9 +769,14 @@ const state = {
     alignColliderToRail(leftRailCollider, "left");
     alignColliderToRail(rightRailCollider, "right");
 
+    setStatus("Enabling physics...", "#00cc99");
     initialisePhysics(ammoModule);
+    setStatus("Physics enabled ✔", "#00dd77");
+
     resetBall();
-    setStatus("Scene ready ✔", "green");
+
+    setStatus("Game objects ready ✔", "#00ff33");
+    setStatus("✅ All systems go! Launching...", "#00aa33");
 
     timing.lastTick = performance.now();
     engine.runRenderLoop(updateFrame);
