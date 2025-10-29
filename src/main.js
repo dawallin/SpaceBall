@@ -508,61 +508,6 @@ globalThis.__spaceBall = debugInterface;
 bindTouchPad(leftPad, "left");
 bindTouchPad(rightPad, "right");
 
-function loadAmmoModule() {
-  const typedModules = [
-    "https://cdn.jsdelivr.net/npm/ammojs-typed@1.0.6/builds/ammo.wasm.js",
-    "https://cdn.jsdelivr.net/npm/ammojs-typed@1.0.6/builds/ammo.js",
-  ];
-
-  const tryTypedModule = (index = 0) => {
-    if (index >= typedModules.length) {
-      return Promise.reject(new Error("Typed AmmoJS module unavailable"));
-    }
-
-    return import(typedModules[index])
-      .then((module) => {
-        if (typeof module.default === "function") {
-          return module.default();
-        }
-        if (typeof module.Ammo === "function") {
-          return module.Ammo();
-        }
-        if (module.default && typeof module.default.Ammo === "function") {
-          return module.default.Ammo();
-        }
-        throw new Error("AmmoJS module is not available in the expected format");
-      })
-      .catch(() => tryTypedModule(index + 1));
-  };
-
-  const loadFromScript = () =>
-    new Promise((resolve, reject) => {
-      const existing = globalThis.Ammo;
-      if (typeof existing === "function") {
-        existing().then(resolve).catch(reject);
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = "https://cdn.babylonjs.com/ammo.js";
-      script.async = true;
-      script.onload = () => {
-        const ammoFactory = globalThis.Ammo;
-        if (typeof ammoFactory === "function") {
-          ammoFactory().then(resolve).catch(reject);
-        } else if (ammoFactory) {
-          resolve(ammoFactory);
-        } else {
-          reject(new Error("Ammo global was not initialised"));
-        }
-      };
-      script.onerror = () => reject(new Error("Failed to load AmmoJS script"));
-      document.head.appendChild(script);
-    });
-
-  return tryTypedModule().catch(() => loadFromScript());
-}
-
 function resetBall() {
   const { xPos } = positionBallOnRails(0);
   ball.state = "ready";
@@ -591,74 +536,90 @@ function resetBall() {
   updateScoreReadout();
 }
 
-function initialisePhysics() {
-  return loadAmmoModule()
-    .then((ammo) => {
-      const plugin = new AmmoJSPlugin(true, ammo);
-      scene.enablePhysics(new Vector3(0, -geometry.gravityBase, 0), plugin);
-      const enginePhysics = scene.getPhysicsEngine();
-      enginePhysics?.setTimeStep(1 / 240);
-      if (plugin.setSubTimeStep) {
-        plugin.setSubTimeStep(1 / 480);
-      }
+async function initialisePhysics() {
+  try {
+    const ammoGlobal = globalThis.Ammo;
+    if (!ammoGlobal) {
+      throw new Error("Ammo global factory was not found");
+    }
 
-      const material = new PhysicsMaterial();
-      material.friction = 0.68;
-      material.restitution = 0.02;
-      material.rollingFriction = 0.06;
+    let ammoModule;
+    if (typeof ammoGlobal === "function") {
+      ammoModule = await ammoGlobal();
+    } else if (ammoGlobal && typeof ammoGlobal.then === "function") {
+      ammoModule = await ammoGlobal;
+    } else {
+      ammoModule = ammoGlobal;
+    }
 
-      const ballAggregate = new PhysicsAggregate(
-        ball.mesh,
-        PhysicsShapeType.SPHERE,
-        {
-          mass: 0.18,
-          restitution: material.restitution,
-          friction: material.friction,
-        },
-        scene
-      );
-      ballAggregate.body.setMotionType?.(PhysicsMotionType.DYNAMIC);
-      ballAggregate.body.setLinearDamping?.(0.08);
-      ballAggregate.body.setAngularDamping?.(0.22);
+    if (ammoModule && typeof ammoModule.Ammo === "function") {
+      ammoModule = await ammoModule.Ammo();
+    }
 
-      const leftAggregate = new PhysicsAggregate(
-        leftRailCollider,
-        PhysicsShapeType.CYLINDER,
-        {
-          mass: 0,
-          restitution: material.restitution,
-          friction: material.friction,
-        },
-        scene
-      );
-      leftAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
+    const plugin = new AmmoJSPlugin(true, ammoModule);
+    scene.enablePhysics(new Vector3(0, -geometry.gravityBase, 0), plugin);
+    const enginePhysics = scene.getPhysicsEngine();
+    enginePhysics?.setTimeStep(1 / 240);
+    if (plugin.setSubTimeStep) {
+      plugin.setSubTimeStep(1 / 480);
+    }
 
-      const rightAggregate = new PhysicsAggregate(
-        rightRailCollider,
-        PhysicsShapeType.CYLINDER,
-        {
-          mass: 0,
-          restitution: material.restitution,
-          friction: material.friction,
-        },
-        scene
-      );
-      rightAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
+    const material = new PhysicsMaterial();
+    material.friction = 0.68;
+    material.restitution = 0.02;
+    material.rollingFriction = 0.06;
 
-      physicsState.plugin = plugin;
-      physicsState.material = material;
-      physicsState.ballAggregate = ballAggregate;
-      physicsState.leftAggregate = leftAggregate;
-      physicsState.rightAggregate = rightAggregate;
-      physicsState.ready = true;
+    const ballAggregate = new PhysicsAggregate(
+      ball.mesh,
+      PhysicsShapeType.SPHERE,
+      {
+        mass: 0.18,
+        restitution: material.restitution,
+        friction: material.friction,
+      },
+      scene
+    );
+    ballAggregate.body.setMotionType?.(PhysicsMotionType.DYNAMIC);
+    ballAggregate.body.setLinearDamping?.(0.08);
+    ballAggregate.body.setAngularDamping?.(0.22);
 
-      resetBall();
-    })
-    .catch((error) => {
-      console.error("Babylon physics failed to initialise", error);
-      physicsState.ready = false;
-      resetBall();
-    });
+    const leftAggregate = new PhysicsAggregate(
+      leftRailCollider,
+      PhysicsShapeType.CYLINDER,
+      {
+        mass: 0,
+        restitution: material.restitution,
+        friction: material.friction,
+      },
+      scene
+    );
+    leftAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
+
+    const rightAggregate = new PhysicsAggregate(
+      rightRailCollider,
+      PhysicsShapeType.CYLINDER,
+      {
+        mass: 0,
+        restitution: material.restitution,
+        friction: material.friction,
+      },
+      scene
+    );
+    rightAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
+
+    physicsState.plugin = plugin;
+    physicsState.material = material;
+    physicsState.ballAggregate = ballAggregate;
+    physicsState.leftAggregate = leftAggregate;
+    physicsState.rightAggregate = rightAggregate;
+    physicsState.ready = true;
+
+    resetBall();
+  } catch (error) {
+    console.error("Babylon physics failed to initialise", error);
+    physicsState.ready = false;
+    resetBall();
+  }
 }
 
 function syncRailBodies(dtSeconds) {
