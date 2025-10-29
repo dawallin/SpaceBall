@@ -1,3 +1,37 @@
+// === Early debug helpers ===
+const statusEl = document.getElementById('status-bar');
+function logLine(msg) {
+  console.log('[SpaceBall]', msg);
+  if (statusEl) {
+    statusEl.textContent = msg;
+  }
+}
+function setStatus(msg, color) {
+  if (statusEl) {
+    statusEl.textContent = msg;
+    if (color) statusEl.style.background = color;
+  }
+  logLine(msg);
+  if (typeof updateScriptBannerPosition === 'function') {
+    updateScriptBannerPosition();
+  }
+}
+async function step(name, fn) {
+  const start = performance.now();
+  try {
+    setStatus(name + '…', '#004488');
+    const result = await fn();
+    const dur = (performance.now() - start).toFixed(1);
+    setStatus(`${name} ✔ (${dur}ms)`, '#0077aa');
+    return result;
+  } catch (err) {
+    const msg = `${name} failed: ${err.message}`;
+    setStatus('❌ ' + msg, 'darkred');
+    logLine(err.stack || msg);
+    throw err;
+  }
+}
+
 console.log('=== SpaceBall Startup ===');
 const scriptLoadResults = ['babylon.js', 'ammo.js'].map((src) => {
   const found = [...document.scripts].some((s) => s.src.includes(src));
@@ -13,43 +47,12 @@ if (document.readyState === 'loading') {
   });
 }
 
-const status = document.getElementById('status-bar');
-function logLine(msg) {
-  console.log('[SpaceBall]', msg);
-  if (status) status.textContent = msg;
-}
-function setStatus(text, color) {
-  if (!status) {
-    console.warn('⚠ No status element');
-    return;
-  }
-  status.textContent = text;
-  if (color) status.style.background = color;
-  updateScriptBannerPosition();
-  logLine(text);
-}
-async function step(name, fn) {
-  const start = performance.now();
-  try {
-    setStatus(name + '…', '#0066cc');
-    const result = await fn();
-    const dur = (performance.now() - start).toFixed(1);
-    setStatus(`${name} ✔ (${dur}ms)`, '#009933');
-    return result;
-  } catch (err) {
-    const msg = `${name} failed: ${err.message}`;
-    setStatus('❌ ' + msg, 'darkred');
-    logLine(err.stack || msg);
-    throw err;
-  }
-}
-
 let scriptBanner;
 function updateScriptBannerPosition() {
   if (!scriptBanner) {
     return;
   }
-  const statusHeight = status ? status.getBoundingClientRect().height : 0;
+  const statusHeight = statusEl ? statusEl.getBoundingClientRect().height : 0;
   scriptBanner.style.top = `${statusHeight}px`;
 }
 
@@ -62,8 +65,8 @@ scriptLoadResults.forEach(({ src, found }) => {
   tag.style.color = found ? '#6cff8b' : '#ff6b6b';
   scriptBanner.appendChild(tag);
 });
-if (status) {
-  status.insertAdjacentElement('afterend', scriptBanner);
+if (statusEl) {
+  statusEl.insertAdjacentElement('afterend', scriptBanner);
 } else {
   document.body.insertAdjacentElement('afterbegin', scriptBanner);
 }
@@ -80,7 +83,7 @@ if (missingScripts.length) {
 if (typeof window.BABYLON === 'undefined') {
   document.body.insertAdjacentHTML(
     'beforeend',
-    "<div style=\"background:#aa0000;color:#fff;font-family:monospace;padding:8px;z-index:10000;\">❌ Babylon.js missing — check script order in index.html</div>"
+    '<div style="background:#aa0000;color:#fff;font-family:monospace;padding:8px;z-index:10000;">❌ BABYLON is undefined when bootstrap starts. Check index.html script ordering and network.</div>'
   );
 }
 
@@ -91,7 +94,7 @@ if (DEBUG_MODE) {
     'position:fixed;top:40px;left:0;width:100%;max-height:35vh;overflow:auto;background:#0b1022;color:#d9e8ff;font-family:monospace;font-size:12px;padding:6px;z-index:9998;';
   document.body.appendChild(debugPanel);
   const alignDebugPanel = () => {
-    const statusHeight = status ? status.getBoundingClientRect().height : 0;
+    const statusHeight = statusEl ? statusEl.getBoundingClientRect().height : 0;
     const bannerHeight = scriptBanner ? scriptBanner.getBoundingClientRect().height : 0;
     debugPanel.style.top = `${statusHeight + bannerHeight + 8}px`;
   };
@@ -192,7 +195,7 @@ function degToRad(degrees) {
     await step('Verify Babylon global', async () => {
       const t0 = performance.now();
       if (typeof window.BABYLON === 'undefined') {
-        throw new Error('BABYLON global missing (babylon.js not ready)');
+        throw new Error('BABYLON global still undefined inside bootstrap — external script may have failed to load.');
       } else {
         const dt = (performance.now() - t0).toFixed(1);
         logLine(`✅ Babylon.js detected after ${dt}ms`);
@@ -931,7 +934,7 @@ function degToRad(degrees) {
 
     if (!DEBUG_MODE) {
       setTimeout(() => {
-        if (status) status.style.display = 'none';
+        if (statusEl) statusEl.style.display = 'none';
         if (dbgEl) dbgEl.style.display = 'none';
         if (scriptBanner) scriptBanner.style.display = 'none';
       }, 2500);
@@ -940,7 +943,7 @@ function degToRad(degrees) {
     }
   } catch (err) {
     const message = err && err.message ? err.message : String(err);
-    if (!status || !status.textContent.startsWith('❌')) {
+    if (!statusEl || !statusEl.textContent.startsWith('❌')) {
       setStatus(`❌ Bootstrap failure: ${message}`, 'darkred');
     }
     logLine(`Bootstrap error stack: ${err && err.stack ? err.stack : '(no stack)'}`);

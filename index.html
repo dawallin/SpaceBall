@@ -129,23 +129,30 @@
         </button>
       </footer>
     </main>
-    <!-- Load Babylon and Ammo before main.js -->
-    <script src="https://cdn.babylonjs.com/babylon.js" defer></script>
-    <script src="https://cdn.babylonjs.com/ammo.js" defer></script>
+    <!-- Load Babylon.js and Ammo.js. Do NOT defer them -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/ammo.js"></script>
     <script>
-      // Wait for both Babylon and Ammo to be available before loading main.js
-      function whenReady(cb) {
-        const check = () => {
-          if (window.BABYLON && window.Ammo) cb();
-          else setTimeout(check, 50);
-        };
-        check();
-      }
-      whenReady(() => {
-        const s = document.createElement('script');
-        s.src = 'src/main.js?v=' + Date.now(); // cache-bust
-        document.body.appendChild(s);
-      });
+      // Wait until both Babylon and Ammo are actually available.
+      (function waitForGlobals() {
+        // show a message in the status bar while waiting
+        const statusEl = document.getElementById('status-bar');
+        function updateWaiting() {
+          const babylonReady = !!window.BABYLON;
+          const ammoReady = !!window.Ammo;
+          const msg = `Waiting for globals: BABYLON ${babylonReady ? '✔' : '✘'}, Ammo ${ammoReady ? '✔' : '✘'}`;
+          if (statusEl) statusEl.textContent = msg;
+        }
+        updateWaiting();
+        if (window.BABYLON && window.Ammo) {
+          // Once both are ready, load main.js with cache-busting query
+          const script = document.createElement('script');
+          script.src = 'src/main.js?v=' + Date.now();
+          document.body.appendChild(script);
+        } else {
+          setTimeout(waitForGlobals, 50);
+        }
+      })();
     </script>
   </body>
 </html>
