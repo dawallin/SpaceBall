@@ -32,6 +32,28 @@ function degToRad(degrees) {
   return (Number(degrees) * Math.PI) / 180;
 }
 
+async function loadAmmoModule() {
+  const ammoGlobal = globalThis.Ammo;
+  if (!ammoGlobal) {
+    throw new Error("Ammo global factory was not found");
+  }
+
+  let ammoModule;
+  if (typeof ammoGlobal === "function") {
+    ammoModule = await ammoGlobal();
+  } else if (ammoGlobal && typeof ammoGlobal.then === "function") {
+    ammoModule = await ammoGlobal;
+  } else {
+    ammoModule = ammoGlobal;
+  }
+
+  if (ammoModule && typeof ammoModule.Ammo === "function") {
+    ammoModule = await ammoModule.Ammo();
+  }
+
+  return ammoModule;
+}
+
 const canvas = document.getElementById("playfield");
 const tiltSlider = document.getElementById("tiltSlider");
 const tiltReadout = document.getElementById("tiltReadout");
@@ -45,33 +67,13 @@ const cameraAlphaReadout = document.getElementById("cameraAlphaReadout");
 const cameraBetaReadout = document.getElementById("cameraBetaReadout");
 const cameraZoomReadout = document.getElementById("cameraZoomReadout");
 const statusBar = document.getElementById("status-bar");
-
-const statusDefaultBackground = statusBar?.style.background ?? "";
-const statusDefaultColor = statusBar?.style.color ?? "";
-
-function setStatus(text) {
-  if (statusBar) {
-    statusBar.style.background = statusDefaultBackground;
-    statusBar.style.color = statusDefaultColor || "white";
-    statusBar.textContent = text;
+function setStatus(text, color) {
+  if (!statusBar) return;
+  statusBar.textContent = text;
+  if (color) {
+    statusBar.style.background = color;
   }
-  console.log(text);
-}
-
-function setStatusError(error) {
-  const message =
-    typeof error === "string"
-      ? error
-      : error?.message || "Initialization failed";
-  if (statusBar) {
-    statusBar.style.background = "darkred";
-    statusBar.style.color = "white";
-    statusBar.textContent = `❌ ${message}`;
-  }
-}
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  console.log("[SpaceBall]", text);
 }
 
 const tiltBounds = {
@@ -105,683 +107,665 @@ const state = {
   rightPointer: null,
 };
 
-tiltReadout.textContent = `${Math.round(state.tilt)}°`;
-tiltSlider.setAttribute("aria-valuenow", tiltSlider.value);
 
-setStatus("Initializing Babylon engine...");
-const engine = new Engine(canvas, true, {
-  alpha: true,
-  preserveDrawingBuffer: true,
-  stencil: true,
-  disableWebGL2Support: false,
-});
-const scene = new Scene(engine);
-scene.clearColor = new Color4(0, 0, 0, 0);
-
-setStatus("Babylon engine ready");
-setStatus("Creating scene objects...");
-
-const boardPivot = new TransformNode("boardPivot", scene);
-
-const betaRange = {
-  min: Number(cameraBetaSlider?.min ?? 0),
-  max: Number(cameraBetaSlider?.max ?? 360),
-};
-const betaLimitPadding = 0.01;
-const safeLowerBetaDeg = Math.min(
-  betaRange.min + betaLimitPadding,
-  betaRange.max - betaLimitPadding
-);
-const safeUpperBetaDeg = Math.max(
-  betaRange.min + betaLimitPadding,
-  betaRange.max - betaLimitPadding
-);
-const initialBetaDegrees = clamp(
-  Number(cameraBetaSlider?.value ?? 60) || 0,
-  safeLowerBetaDeg,
-  safeUpperBetaDeg
-);
-
-const initialCameraSettings = {
-  alpha: degToRad(cameraAlphaSlider?.value ?? 20),
-  beta: degToRad(initialBetaDegrees),
-  radius: Number(cameraZoomSlider?.value ?? 1.2),
-};
-
-const camera = new ArcRotateCamera(
-  "camera",
-  initialCameraSettings.alpha,
-  initialCameraSettings.beta,
-  initialCameraSettings.radius,
-  new Vector3(0, -0.05, -0.35),
-  scene
-);
-camera.lowerRadiusLimit = Number(cameraZoomSlider?.min ?? 0.6);
-camera.upperRadiusLimit = Number(cameraZoomSlider?.max ?? 2.4);
-camera.lowerBetaLimit = degToRad(safeLowerBetaDeg);
-camera.upperBetaLimit = degToRad(safeUpperBetaDeg);
-camera.wheelPrecision = 120;
-camera.panningSensibility = 0;
-camera.attachControl(canvas, false);
-camera.inputs.clear();
-
-function buildRailPath(side) {
-  const topX = getRailX(geometry, state, 0, side);
-  const bottomX = getRailX(geometry, state, 1, side);
-
-  const topPoint = new Vector3(topX, geometry.topY, 0);
-  const bottomPoint = new Vector3(bottomX, geometry.bottomY, 0);
-  const dropPoint = new Vector3(
-    bottomX,
-    geometry.bottomY,
-    -geometry.railDropLength
-  );
-
-  return [topPoint, bottomPoint, dropPoint];
-}
-
-function applyCameraSettings() {
-  if (!cameraAlphaSlider || !cameraBetaSlider || !cameraZoomSlider) {
-    return;
-  }
-
-  const alphaDeg = clamp(Number(cameraAlphaSlider.value) || 0, 0, 360);
-  const betaMin = Number(cameraBetaSlider.min) || 0;
-  const betaMax = Number(cameraBetaSlider.max) || 360;
-  const betaDeg = clamp(Number(cameraBetaSlider.value) || 0, betaMin, betaMax);
-  const safeBetaLower = Math.min(
-    betaMin + betaLimitPadding,
-    betaMax - betaLimitPadding
-  );
-  const safeBetaUpper = Math.max(
-    betaMin + betaLimitPadding,
-    betaMax - betaLimitPadding
-  );
-  const safeBetaDeg = clamp(betaDeg, safeBetaLower, safeBetaUpper);
-  const zoom = clamp(
-    Number(cameraZoomSlider.value) || 0,
-    Number(cameraZoomSlider.min) || 0.6,
-    Number(cameraZoomSlider.max) || 2.4
-  );
-
-  camera.alpha = degToRad(alphaDeg);
-  camera.beta = degToRad(safeBetaDeg);
-  camera.radius = zoom;
-
-  if (cameraAlphaReadout) {
-    cameraAlphaReadout.textContent = `${Math.round(alphaDeg)}°`;
-  }
-  if (cameraBetaReadout) {
-    cameraBetaReadout.textContent = `${Math.round(betaDeg)}°`;
-  }
-  if (cameraZoomReadout) {
-    cameraZoomReadout.textContent = zoom.toFixed(2);
-  }
-
-  cameraAlphaSlider.value = String(alphaDeg);
-  cameraBetaSlider.value = String(betaDeg);
-  cameraZoomSlider.value = zoom.toFixed(2);
-
-  cameraAlphaSlider.setAttribute("aria-valuenow", cameraAlphaSlider.value);
-  cameraBetaSlider.setAttribute("aria-valuenow", cameraBetaSlider.value);
-  cameraZoomSlider.setAttribute("aria-valuenow", cameraZoomSlider.value);
-}
-
-if (cameraAlphaSlider && cameraBetaSlider && cameraZoomSlider) {
-  [
-    [cameraAlphaSlider, applyCameraSettings],
-    [cameraBetaSlider, applyCameraSettings],
-    [cameraZoomSlider, applyCameraSettings],
-  ].forEach(([slider, handler]) => {
-    slider.addEventListener("input", handler);
-    slider.addEventListener("change", handler);
-  });
-
-  applyCameraSettings();
-}
-
-const light = new HemisphericLight("light", new Vector3(0, 1, 0), scene);
-light.intensity = 1.1;
-light.specular = new Color3(0.2, 0.2, 0.2);
-
-const railMaterial = new StandardMaterial("railMaterial", scene);
-railMaterial.diffuseColor = new Color3(0.6, 0.72, 1.0);
-railMaterial.emissiveColor = new Color3(0.1, 0.25, 0.6);
-railMaterial.specularColor = new Color3(0.3, 0.4, 0.7);
-
-const ballMaterial = new StandardMaterial("ballMaterial", scene);
-ballMaterial.diffuseColor = new Color3(1, 1, 1);
-ballMaterial.emissiveColor = new Color3(0.55, 0.7, 1);
-ballMaterial.specularColor = new Color3(0.9, 0.9, 0.9);
-
-const initialLeftPath = buildRailPath("left");
-let leftRail = MeshBuilder.CreateTube(
-  "leftRail",
-  { path: initialLeftPath, radius: geometry.railRadius, updatable: true },
-  scene
-);
-leftRail.material = railMaterial;
-leftRail.parent = boardPivot;
-
-const initialRightPath = buildRailPath("right");
-let rightRail = MeshBuilder.CreateTube(
-  "rightRail",
-  { path: initialRightPath, radius: geometry.railRadius, updatable: true },
-  scene
-);
-rightRail.material = railMaterial;
-rightRail.parent = boardPivot;
-
-const railLength = Math.abs(geometry.bottomY - geometry.topY);
-const leftRailCollider = MeshBuilder.CreateCylinder(
-  "leftRailCollider",
-  { height: railLength, diameter: geometry.railRadius * 2 },
-  scene
-);
-leftRailCollider.isVisible = false;
-leftRailCollider.parent = boardPivot;
-
-const rightRailCollider = MeshBuilder.CreateCylinder(
-  "rightRailCollider",
-  { height: railLength, diameter: geometry.railRadius * 2 },
-  scene
-);
-rightRailCollider.isVisible = false;
-rightRailCollider.parent = boardPivot;
-
-const ballMesh = MeshBuilder.CreateSphere(
-  "ball",
-  { diameter: geometry.ballRadius * 2 },
-  scene
-);
-ballMesh.material = ballMaterial;
-ballMesh.parent = boardPivot;
-
-const ball = {
-  state: "init",
-  resetTimer: 0,
-  mesh: ballMesh,
-};
-
-const physicsState = {
-  plugin: null,
-  leftAggregate: null,
-  rightAggregate: null,
-  ballAggregate: null,
-  material: null,
-  ready: false,
-  lastBallY: null,
-  displacement: 0,
-  dropTriggered: false,
-  dropSeparation: 0,
-  events: [],
-};
-
-function updateBoardTilt() {
-  const normalizedTilt = clamp(
-    (state.tilt - tiltBounds.min) / (tiltBounds.max - tiltBounds.min),
-    0,
-    1
-  );
-  const minAngle = Math.PI / 3.1;
-  const maxAngle = Math.PI / 2.2;
-  const tiltAngle = minAngle + (maxAngle - minAngle) * normalizedTilt;
-  boardPivot.rotation.x = -tiltAngle;
-}
-
-updateBoardTilt();
-
-function alignColliderToRail(collider, side) {
-  const topX = getRailX(geometry, state, 0, side);
-  const bottomX = getRailX(geometry, state, 1, side);
-  const top = new Vector3(topX, geometry.topY, geometry.dropStartZ);
-  const bottom = new Vector3(bottomX, geometry.bottomY, geometry.dropStartZ);
-  const center = top.add(bottom).scale(0.5);
-  const direction = bottom.subtract(top);
-  const length = direction.length();
-  const normalized = direction.normalize();
-  const up = Vector3.Up();
-  const dot = clamp(Vector3.Dot(up, normalized), -1, 1);
-  let rotation = Quaternion.Identity();
-  const axis = Vector3.Cross(up, normalized);
-  if (axis.lengthSquared() > 1e-6) {
-    axis.normalize();
-    rotation = Quaternion.RotationAxis(axis, Math.acos(dot));
-  } else if (dot < 0) {
-    rotation = Quaternion.RotationAxis(Vector3.Right(), Math.PI);
-  }
-
-  if (!collider.rotationQuaternion) {
-    collider.rotationQuaternion = Quaternion.Identity();
-  }
-  collider.rotationQuaternion.copyFrom(rotation);
-  collider.position.copyFrom(center);
-  collider.scaling.y = length / railLength;
-}
-
-function getWorldTransform(node) {
-  const scaling = new Vector3();
-  const rotation = new Quaternion();
-  const translation = new Vector3();
-  node.getWorldMatrix().decompose(scaling, rotation, translation);
-  return { rotation, position: translation };
-}
-
-function updateRailMeshes() {
-  const leftPath = buildRailPath("left");
-  leftRail = MeshBuilder.CreateTube(
-    "leftRail",
-    {
-      path: leftPath,
-      radius: geometry.railRadius,
-      updatable: true,
-      instance: leftRail,
-    },
-    scene
-  );
-
-  const rightPath = buildRailPath("right");
-  rightRail = MeshBuilder.CreateTube(
-    "rightRail",
-    {
-      path: rightPath,
-      radius: geometry.railRadius,
-      updatable: true,
-      instance: rightRail,
-    },
-    scene
-  );
-
-  alignColliderToRail(leftRailCollider, "left");
-  alignColliderToRail(rightRailCollider, "right");
-}
-
-function positionBallOnRails(progress = 0) {
-  const clampedProgress = clamp(progress, 0, 1);
-  const yPos = geometry.topY + (geometry.bottomY - geometry.topY) * clampedProgress;
-  const leftX = getRailX(geometry, state, clampedProgress, "left");
-  const rightX = getRailX(geometry, state, clampedProgress, "right");
-  const xPos = (leftX + rightX) / 2;
-
-  ball.mesh.position.x = xPos;
-  ball.mesh.position.y = yPos + geometry.ballRadius;
-  ball.mesh.position.z = geometry.dropStartZ + geometry.ballRadius;
-  return { xPos, yPos };
-}
-
-function handlePadDown(side, pointerId, normalized) {
-  const offset = normalizedToOffset(normalized, geometry.railTravel);
-  if (side === "left") {
-    state.leftPointer = pointerId;
-    state.leftOffset = offset;
-  } else {
-    state.rightPointer = pointerId;
-    state.rightOffset = offset;
-  }
-}
-
-function handlePadMove(side, pointerId, normalized) {
-  if (side === "left" && state.leftPointer !== pointerId) return;
-  if (side === "right" && state.rightPointer !== pointerId) return;
-  const offset = normalizedToOffset(normalized, geometry.railTravel);
-  if (side === "left") {
-    state.leftOffset = offset;
-  } else {
-    state.rightOffset = offset;
-  }
-}
-
-function handlePadUp(side, pointerId) {
-  if (side === "left" && state.leftPointer === pointerId) {
-    state.leftPointer = null;
-  }
-  if (side === "right" && state.rightPointer === pointerId) {
-    state.rightPointer = null;
-  }
-}
-
-function updateTilt(value) {
-  state.tilt = sliderValueToTilt(value, tiltBounds);
-  tiltReadout.textContent = `${Math.round(state.tilt)}°`;
-  tiltSlider.setAttribute("aria-valuenow", String(value));
-  updateBoardTilt();
-}
-
-tiltSlider.addEventListener("input", (event) => {
-  updateTilt(event.target.value);
-});
-
-tiltSlider.addEventListener("change", (event) => {
-  updateTilt(event.target.value);
-});
-
-function normalisePointer(event, padElement) {
-  const rect = padElement.getBoundingClientRect();
-  const ratio = (event.clientX - rect.left) / rect.width;
-  return clamp(ratio, 0, 1);
-}
-
-function bindTouchPad(padElement, side) {
-  padElement.addEventListener(
-    "pointerdown",
-    (event) => {
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-      padElement.setPointerCapture(event.pointerId);
-      padElement.classList.add("is-active");
-      handlePadDown(side, event.pointerId, normalisePointer(event, padElement));
-    },
-    { passive: false }
-  );
-
-  padElement.addEventListener(
-    "pointermove",
-    (event) => {
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-      handlePadMove(side, event.pointerId, normalisePointer(event, padElement));
-    },
-    { passive: false }
-  );
-
-  padElement.addEventListener(
-    "pointerup",
-    (event) => {
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-      handlePadUp(side, event.pointerId);
-      padElement.classList.remove("is-active");
-    },
-    { passive: false }
-  );
-
-  padElement.addEventListener(
-    "pointercancel",
-    (event) => {
-      handlePadUp(side, event.pointerId);
-      padElement.classList.remove("is-active");
-    },
-    { passive: false }
-  );
-}
-
-const debugInterface = {
-  geometry,
-  get state() {
-    return state;
-  },
-  get physics() {
-    return physicsState;
-  },
-  controls: {
-    pressPad(side, pointerId, normalized) {
-      const pad = side === "left" ? leftPad : rightPad;
-      pad.classList.add("is-active");
-      handlePadDown(side, pointerId, normalized);
-    },
-    movePad(side, pointerId, normalized) {
-      handlePadMove(side, pointerId, normalized);
-    },
-    releasePad(side, pointerId) {
-      const pad = side === "left" ? leftPad : rightPad;
-      pad.classList.remove("is-active");
-      handlePadUp(side, pointerId);
-    },
-  },
-  getPocketLayout() {
-    return createPocketLayouts(geometry);
-  },
-};
-
-globalThis.__spaceBall = debugInterface;
-
-bindTouchPad(leftPad, "left");
-bindTouchPad(rightPad, "right");
-
-function resetBall() {
-  const { xPos } = positionBallOnRails(0);
-  ball.state = "ready";
-  ball.resetTimer = 0;
-  ball.mesh.isVisible = true;
-  physicsState.displacement = 0;
-  physicsState.lastBallY = ball.mesh.position.y;
-  physicsState.dropTriggered = false;
-  physicsState.dropSeparation = 0;
-
-  if (physicsState.ballAggregate) {
-    const body = physicsState.ballAggregate.body;
-    if (body) {
-      body.setLinearVelocity?.(Vector3.Zero());
-      body.setAngularVelocity?.(Vector3.Zero());
-      if (body.setMotionType) {
-        body.setMotionType(PhysicsMotionType.DYNAMIC);
-      }
-      const startPosition = new Vector3(xPos, ball.mesh.position.y, ball.mesh.position.z);
-      const rotation = ball.mesh.rotationQuaternion ?? Quaternion.Identity();
-      body.setTargetTransform?.(startPosition, rotation, 0);
-      body.setTransformation?.(startPosition, rotation);
-    }
-  }
-
-  updateScoreReadout();
-}
-
-async function initialisePhysics() {
+(async function bootstrap() {
   try {
     setStatus("Loading Ammo.js...");
-    await delay(100);
+    const ammoModule = await loadAmmoModule();
+    setStatus("Ammo.js loaded");
 
-    const ammoGlobal = globalThis.Ammo;
-    if (!ammoGlobal) {
-      throw new Error("Ammo global factory was not found");
-    }
+    tiltReadout.textContent = `${Math.round(state.tilt)}°`;
+    tiltSlider.setAttribute("aria-valuenow", tiltSlider.value);
 
-    let ammoModule;
-    if (typeof ammoGlobal === "function") {
-      ammoModule = await ammoGlobal();
-    } else if (ammoGlobal && typeof ammoGlobal.then === "function") {
-      ammoModule = await ammoGlobal;
-    } else {
-      ammoModule = ammoGlobal;
-    }
+    setStatus("Creating Babylon engine...");
+    const engine = new Engine(canvas, true, {
+      alpha: true,
+      preserveDrawingBuffer: true,
+      stencil: true,
+      disableWebGL2Support: false,
+    });
+    const scene = new Scene(engine);
+    scene.clearColor = new Color4(0, 0, 0, 0);
 
-    if (ammoModule && typeof ammoModule.Ammo === "function") {
-      ammoModule = await ammoModule.Ammo();
-    }
+    setStatus("Babylon engine ready");
+    setStatus("Creating game objects...");
 
-    setStatus("Ammo loaded");
-    setStatus("Initializing physics...");
+    const boardPivot = new TransformNode("boardPivot", scene);
 
-    const plugin = new AmmoJSPlugin(true, ammoModule);
-    scene.enablePhysics(new Vector3(0, -geometry.gravityBase, 0), plugin);
-    const enginePhysics = scene.getPhysicsEngine();
-    enginePhysics?.setTimeStep(1 / 240);
-    if (plugin.setSubTimeStep) {
-      plugin.setSubTimeStep(1 / 480);
-    }
+    const betaRange = {
+      min: Number(cameraBetaSlider?.min ?? 0),
+      max: Number(cameraBetaSlider?.max ?? 360),
+    };
+    const betaLimitPadding = 0.01;
+    const safeLowerBetaDeg = Math.min(
+      betaRange.min + betaLimitPadding,
+      betaRange.max - betaLimitPadding
+    );
+    const safeUpperBetaDeg = Math.max(
+      betaRange.min + betaLimitPadding,
+      betaRange.max - betaLimitPadding
+    );
+    const initialBetaDegrees = clamp(
+      Number(cameraBetaSlider?.value ?? 60) || 0,
+      safeLowerBetaDeg,
+      safeUpperBetaDeg
+    );
 
-    const material = new PhysicsMaterial();
-    material.friction = 0.68;
-    material.restitution = 0.02;
-    material.rollingFriction = 0.06;
+    const initialCameraSettings = {
+      alpha: degToRad(cameraAlphaSlider?.value ?? 20),
+      beta: degToRad(initialBetaDegrees),
+      radius: Number(cameraZoomSlider?.value ?? 1.2),
+    };
 
-    const ballAggregate = new PhysicsAggregate(
-      ball.mesh,
-      PhysicsShapeType.SPHERE,
-      {
-        mass: 0.18,
-        restitution: material.restitution,
-        friction: material.friction,
-      },
+    const camera = new ArcRotateCamera(
+      "camera",
+      initialCameraSettings.alpha,
+      initialCameraSettings.beta,
+      initialCameraSettings.radius,
+      new Vector3(0, -0.05, -0.35),
       scene
     );
-    ballAggregate.body.setMotionType?.(PhysicsMotionType.DYNAMIC);
-    ballAggregate.body.setLinearDamping?.(0.08);
-    ballAggregate.body.setAngularDamping?.(0.22);
+    camera.lowerRadiusLimit = Number(cameraZoomSlider?.min ?? 0.6);
+    camera.upperRadiusLimit = Number(cameraZoomSlider?.max ?? 2.4);
+    camera.lowerBetaLimit = degToRad(safeLowerBetaDeg);
+    camera.upperBetaLimit = degToRad(safeUpperBetaDeg);
+    camera.wheelPrecision = 120;
+    camera.panningSensibility = 0;
+    camera.attachControl(canvas, false);
+    camera.inputs.clear();
 
-    const leftAggregate = new PhysicsAggregate(
-      leftRailCollider,
-      PhysicsShapeType.CYLINDER,
-      {
-        mass: 0,
-        restitution: material.restitution,
-        friction: material.friction,
-      },
+    function buildRailPath(side) {
+      const topX = getRailX(geometry, state, 0, side);
+      const bottomX = getRailX(geometry, state, 1, side);
+
+      const topPoint = new Vector3(topX, geometry.topY, 0);
+      const bottomPoint = new Vector3(bottomX, geometry.bottomY, 0);
+      const dropPoint = new Vector3(
+        bottomX,
+        geometry.bottomY,
+        -geometry.railDropLength
+      );
+
+      return [topPoint, bottomPoint, dropPoint];
+    }
+
+    function applyCameraSettings() {
+      if (!cameraAlphaSlider || !cameraBetaSlider || !cameraZoomSlider) {
+        return;
+      }
+
+      const alphaDeg = clamp(Number(cameraAlphaSlider.value) || 0, 0, 360);
+      const betaMin = Number(cameraBetaSlider.min) || 0;
+      const betaMax = Number(cameraBetaSlider.max) || 360;
+      const betaDeg = clamp(Number(cameraBetaSlider.value) || 0, betaMin, betaMax);
+      const safeBetaLower = Math.min(
+        betaMin + betaLimitPadding,
+        betaMax - betaLimitPadding
+      );
+      const safeBetaUpper = Math.max(
+        betaMin + betaLimitPadding,
+        betaMax - betaLimitPadding
+      );
+      const safeBetaDeg = clamp(betaDeg, safeBetaLower, safeBetaUpper);
+      const zoom = clamp(
+        Number(cameraZoomSlider.value) || 0,
+        Number(cameraZoomSlider.min) || 0.6,
+        Number(cameraZoomSlider.max) || 2.4
+      );
+
+      camera.alpha = degToRad(alphaDeg);
+      camera.beta = degToRad(safeBetaDeg);
+      camera.radius = zoom;
+
+      if (cameraAlphaReadout) {
+        cameraAlphaReadout.textContent = `${Math.round(alphaDeg)}°`;
+      }
+      if (cameraBetaReadout) {
+        cameraBetaReadout.textContent = `${Math.round(betaDeg)}°`;
+      }
+      if (cameraZoomReadout) {
+        cameraZoomReadout.textContent = zoom.toFixed(2);
+      }
+
+      cameraAlphaSlider.value = String(alphaDeg);
+      cameraBetaSlider.value = String(betaDeg);
+      cameraZoomSlider.value = zoom.toFixed(2);
+
+      cameraAlphaSlider.setAttribute("aria-valuenow", cameraAlphaSlider.value);
+      cameraBetaSlider.setAttribute("aria-valuenow", cameraBetaSlider.value);
+      cameraZoomSlider.setAttribute("aria-valuenow", cameraZoomSlider.value);
+    }
+
+    if (cameraAlphaSlider && cameraBetaSlider && cameraZoomSlider) {
+      [
+        [cameraAlphaSlider, applyCameraSettings],
+        [cameraBetaSlider, applyCameraSettings],
+        [cameraZoomSlider, applyCameraSettings],
+      ].forEach(([slider, handler]) => {
+        slider.addEventListener("input", handler);
+        slider.addEventListener("change", handler);
+      });
+
+      applyCameraSettings();
+    }
+
+    const light = new HemisphericLight("light", new Vector3(0, 1, 0), scene);
+    light.intensity = 1.1;
+    light.specular = new Color3(0.2, 0.2, 0.2);
+
+    const railMaterial = new StandardMaterial("railMaterial", scene);
+    railMaterial.diffuseColor = new Color3(0.6, 0.72, 1.0);
+    railMaterial.emissiveColor = new Color3(0.1, 0.25, 0.6);
+    railMaterial.specularColor = new Color3(0.3, 0.4, 0.7);
+
+    const ballMaterial = new StandardMaterial("ballMaterial", scene);
+    ballMaterial.diffuseColor = new Color3(1, 1, 1);
+    ballMaterial.emissiveColor = new Color3(0.55, 0.7, 1);
+    ballMaterial.specularColor = new Color3(0.9, 0.9, 0.9);
+
+    const initialLeftPath = buildRailPath("left");
+    let leftRail = MeshBuilder.CreateTube(
+      "leftRail",
+      { path: initialLeftPath, radius: geometry.railRadius, updatable: true },
       scene
     );
-    leftAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
+    leftRail.material = railMaterial;
+    leftRail.parent = boardPivot;
 
-    const rightAggregate = new PhysicsAggregate(
-      rightRailCollider,
-      PhysicsShapeType.CYLINDER,
-      {
-        mass: 0,
-        restitution: material.restitution,
-        friction: material.friction,
-      },
+    const initialRightPath = buildRailPath("right");
+    let rightRail = MeshBuilder.CreateTube(
+      "rightRail",
+      { path: initialRightPath, radius: geometry.railRadius, updatable: true },
       scene
     );
-    rightAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
+    rightRail.material = railMaterial;
+    rightRail.parent = boardPivot;
 
-    physicsState.plugin = plugin;
-    physicsState.material = material;
-    physicsState.ballAggregate = ballAggregate;
-    physicsState.leftAggregate = leftAggregate;
-    physicsState.rightAggregate = rightAggregate;
-    physicsState.ready = true;
+    const railLength = Math.abs(geometry.bottomY - geometry.topY);
+    const leftRailCollider = MeshBuilder.CreateCylinder(
+      "leftRailCollider",
+      { height: railLength, diameter: geometry.railRadius * 2 },
+      scene
+    );
+    leftRailCollider.isVisible = false;
+    leftRailCollider.parent = boardPivot;
 
-    setStatus("Physics enabled");
+    const rightRailCollider = MeshBuilder.CreateCylinder(
+      "rightRailCollider",
+      { height: railLength, diameter: geometry.railRadius * 2 },
+      scene
+    );
+    rightRailCollider.isVisible = false;
+    rightRailCollider.parent = boardPivot;
+
+    const ballMesh = MeshBuilder.CreateSphere(
+      "ball",
+      { diameter: geometry.ballRadius * 2 },
+      scene
+    );
+    ballMesh.material = ballMaterial;
+    ballMesh.parent = boardPivot;
+
+    const ball = {
+      state: "init",
+      resetTimer: 0,
+      mesh: ballMesh,
+    };
+
+    const physicsState = {
+      plugin: null,
+      leftAggregate: null,
+      rightAggregate: null,
+      ballAggregate: null,
+      material: null,
+      ready: false,
+      lastBallY: null,
+      displacement: 0,
+      dropTriggered: false,
+      dropSeparation: 0,
+      events: [],
+    };
+
+    function updateBoardTilt() {
+      const normalizedTilt = clamp(
+        (state.tilt - tiltBounds.min) / (tiltBounds.max - tiltBounds.min),
+        0,
+        1
+      );
+      const minAngle = Math.PI / 3.1;
+      const maxAngle = Math.PI / 2.2;
+      const tiltAngle = minAngle + (maxAngle - minAngle) * normalizedTilt;
+      boardPivot.rotation.x = -tiltAngle;
+    }
+
+    updateBoardTilt();
+
+    function alignColliderToRail(collider, side) {
+      const topX = getRailX(geometry, state, 0, side);
+      const bottomX = getRailX(geometry, state, 1, side);
+      const top = new Vector3(topX, geometry.topY, geometry.dropStartZ);
+      const bottom = new Vector3(bottomX, geometry.bottomY, geometry.dropStartZ);
+      const center = top.add(bottom).scale(0.5);
+      const direction = bottom.subtract(top);
+      const length = direction.length();
+      const normalized = direction.normalize();
+      const up = Vector3.Up();
+      const dot = clamp(Vector3.Dot(up, normalized), -1, 1);
+      let rotation = Quaternion.Identity();
+      const axis = Vector3.Cross(up, normalized);
+      if (axis.lengthSquared() > 1e-6) {
+        axis.normalize();
+        rotation = Quaternion.RotationAxis(axis, Math.acos(dot));
+      } else if (dot < 0) {
+        rotation = Quaternion.RotationAxis(Vector3.Right(), Math.PI);
+      }
+
+      if (!collider.rotationQuaternion) {
+        collider.rotationQuaternion = Quaternion.Identity();
+      }
+      collider.rotationQuaternion.copyFrom(rotation);
+      collider.position.copyFrom(center);
+      collider.scaling.y = length / railLength;
+    }
+
+    function getWorldTransform(node) {
+      const scaling = new Vector3();
+      const rotation = new Quaternion();
+      const translation = new Vector3();
+      node.getWorldMatrix().decompose(scaling, rotation, translation);
+      return { rotation, position: translation };
+    }
+
+    function updateRailMeshes() {
+      const leftPath = buildRailPath("left");
+      leftRail = MeshBuilder.CreateTube(
+        "leftRail",
+        {
+          path: leftPath,
+          radius: geometry.railRadius,
+          updatable: true,
+          instance: leftRail,
+        },
+        scene
+      );
+
+      const rightPath = buildRailPath("right");
+      rightRail = MeshBuilder.CreateTube(
+        "rightRail",
+        {
+          path: rightPath,
+          radius: geometry.railRadius,
+          updatable: true,
+          instance: rightRail,
+        },
+        scene
+      );
+
+      alignColliderToRail(leftRailCollider, "left");
+      alignColliderToRail(rightRailCollider, "right");
+    }
+
+    function positionBallOnRails(progress = 0) {
+      const clampedProgress = clamp(progress, 0, 1);
+      const yPos = geometry.topY + (geometry.bottomY - geometry.topY) * clampedProgress;
+      const leftX = getRailX(geometry, state, clampedProgress, "left");
+      const rightX = getRailX(geometry, state, clampedProgress, "right");
+      const xPos = (leftX + rightX) / 2;
+
+      ball.mesh.position.x = xPos;
+      ball.mesh.position.y = yPos + geometry.ballRadius;
+      ball.mesh.position.z = geometry.dropStartZ + geometry.ballRadius;
+      return { xPos, yPos };
+    }
+
+    function handlePadDown(side, pointerId, normalized) {
+      const offset = normalizedToOffset(normalized, geometry.railTravel);
+      if (side === "left") {
+        state.leftPointer = pointerId;
+        state.leftOffset = offset;
+      } else {
+        state.rightPointer = pointerId;
+        state.rightOffset = offset;
+      }
+    }
+
+    function handlePadMove(side, pointerId, normalized) {
+      if (side === "left" && state.leftPointer !== pointerId) return;
+      if (side === "right" && state.rightPointer !== pointerId) return;
+      const offset = normalizedToOffset(normalized, geometry.railTravel);
+      if (side === "left") {
+        state.leftOffset = offset;
+      } else {
+        state.rightOffset = offset;
+      }
+    }
+
+    function handlePadUp(side, pointerId) {
+      if (side === "left" && state.leftPointer === pointerId) {
+        state.leftPointer = null;
+      }
+      if (side === "right" && state.rightPointer === pointerId) {
+        state.rightPointer = null;
+      }
+    }
+
+    function updateTilt(value) {
+      state.tilt = sliderValueToTilt(value, tiltBounds);
+      tiltReadout.textContent = `${Math.round(state.tilt)}°`;
+      tiltSlider.setAttribute("aria-valuenow", String(value));
+      updateBoardTilt();
+    }
+
+    tiltSlider.addEventListener("input", (event) => {
+      updateTilt(event.target.value);
+    });
+
+    tiltSlider.addEventListener("change", (event) => {
+      updateTilt(event.target.value);
+    });
+
+    function normalisePointer(event, padElement) {
+      const rect = padElement.getBoundingClientRect();
+      const ratio = (event.clientX - rect.left) / rect.width;
+      return clamp(ratio, 0, 1);
+    }
+
+    function bindTouchPad(padElement, side) {
+      padElement.addEventListener(
+        "pointerdown",
+        (event) => {
+          if (event.cancelable) {
+            event.preventDefault();
+          }
+          padElement.setPointerCapture(event.pointerId);
+          padElement.classList.add("is-active");
+          handlePadDown(side, event.pointerId, normalisePointer(event, padElement));
+        },
+        { passive: false }
+      );
+
+      padElement.addEventListener(
+        "pointermove",
+        (event) => {
+          if (event.cancelable) {
+            event.preventDefault();
+          }
+          handlePadMove(side, event.pointerId, normalisePointer(event, padElement));
+        },
+        { passive: false }
+      );
+
+      padElement.addEventListener(
+        "pointerup",
+        (event) => {
+          if (event.cancelable) {
+            event.preventDefault();
+          }
+          handlePadUp(side, event.pointerId);
+          padElement.classList.remove("is-active");
+        },
+        { passive: false }
+      );
+
+      padElement.addEventListener(
+        "pointercancel",
+        (event) => {
+          handlePadUp(side, event.pointerId);
+          padElement.classList.remove("is-active");
+        },
+        { passive: false }
+      );
+    }
+
+    const debugInterface = {
+      geometry,
+      get state() {
+        return state;
+      },
+      get physics() {
+        return physicsState;
+      },
+      controls: {
+        pressPad(side, pointerId, normalized) {
+          const pad = side === "left" ? leftPad : rightPad;
+          pad.classList.add("is-active");
+          handlePadDown(side, pointerId, normalized);
+        },
+        movePad(side, pointerId, normalized) {
+          handlePadMove(side, pointerId, normalized);
+        },
+        releasePad(side, pointerId) {
+          const pad = side === "left" ? leftPad : rightPad;
+          pad.classList.remove("is-active");
+          handlePadUp(side, pointerId);
+        },
+      },
+      getPocketLayout() {
+        return createPocketLayouts(geometry);
+      },
+    };
+
+    globalThis.__spaceBall = debugInterface;
+
+    bindTouchPad(leftPad, "left");
+    bindTouchPad(rightPad, "right");
+
+    function resetBall() {
+      const { xPos } = positionBallOnRails(0);
+      ball.state = "ready";
+      ball.resetTimer = 0;
+      ball.mesh.isVisible = true;
+      physicsState.displacement = 0;
+      physicsState.lastBallY = ball.mesh.position.y;
+      physicsState.dropTriggered = false;
+      physicsState.dropSeparation = 0;
+
+      if (physicsState.ballAggregate) {
+        const body = physicsState.ballAggregate.body;
+        if (body) {
+          body.setLinearVelocity?.(Vector3.Zero());
+          body.setAngularVelocity?.(Vector3.Zero());
+          if (body.setMotionType) {
+            body.setMotionType(PhysicsMotionType.DYNAMIC);
+          }
+          const startPosition = new Vector3(xPos, ball.mesh.position.y, ball.mesh.position.z);
+          const rotation = ball.mesh.rotationQuaternion ?? Quaternion.Identity();
+          body.setTargetTransform?.(startPosition, rotation, 0);
+          body.setTransformation?.(startPosition, rotation);
+        }
+      }
+
+      updateScoreReadout();
+    }
+
+    function initialisePhysics(ammoModule) {
+      setStatus("Enabling physics...");
+
+      const plugin = new AmmoJSPlugin(true, ammoModule);
+        scene.enablePhysics(new Vector3(0, -geometry.gravityBase, 0), plugin);
+        const enginePhysics = scene.getPhysicsEngine();
+        enginePhysics?.setTimeStep(1 / 240);
+        if (plugin.setSubTimeStep) {
+          plugin.setSubTimeStep(1 / 480);
+        }
+
+        const material = new PhysicsMaterial();
+        material.friction = 0.68;
+        material.restitution = 0.02;
+        material.rollingFriction = 0.06;
+
+        const ballAggregate = new PhysicsAggregate(
+          ball.mesh,
+          PhysicsShapeType.SPHERE,
+          {
+            mass: 0.18,
+            restitution: material.restitution,
+            friction: material.friction,
+          },
+          scene
+        );
+        ballAggregate.body.setMotionType?.(PhysicsMotionType.DYNAMIC);
+        ballAggregate.body.setLinearDamping?.(0.08);
+        ballAggregate.body.setAngularDamping?.(0.22);
+
+        const leftAggregate = new PhysicsAggregate(
+          leftRailCollider,
+          PhysicsShapeType.CYLINDER,
+          {
+            mass: 0,
+            restitution: material.restitution,
+            friction: material.friction,
+          },
+          scene
+        );
+        leftAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
+
+        const rightAggregate = new PhysicsAggregate(
+          rightRailCollider,
+          PhysicsShapeType.CYLINDER,
+          {
+            mass: 0,
+            restitution: material.restitution,
+            friction: material.friction,
+          },
+          scene
+        );
+        rightAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
+
+        physicsState.plugin = plugin;
+        physicsState.material = material;
+        physicsState.ballAggregate = ballAggregate;
+        physicsState.leftAggregate = leftAggregate;
+        physicsState.rightAggregate = rightAggregate;
+        physicsState.ready = true;
+      setStatus("Physics enabled");
+    }
+
+    function syncRailBodies(dtSeconds) {
+      if (!physicsState.ready) {
+        return;
+      }
+
+      const enginePhysics = scene.getPhysicsEngine?.();
+      const step = enginePhysics?.getTimeStep?.() ?? dtSeconds;
+      const leftBody = physicsState.leftAggregate?.body;
+      const rightBody = physicsState.rightAggregate?.body;
+
+      if (leftBody) {
+        const { position, rotation } = getWorldTransform(leftRailCollider);
+        leftBody.setTargetTransform?.(position, rotation, step);
+      }
+
+      if (rightBody) {
+        const { position, rotation } = getWorldTransform(rightRailCollider);
+        rightBody.setTargetTransform?.(position, rotation, step);
+      }
+    }
+
+    function updateScoreReadout() {
+      scoreValue.textContent = `${physicsState.displacement.toFixed(3)} m`;
+    }
+
+    function recordDropEvent() {
+      physicsState.events.push({
+        type: "drop",
+        displacement: physicsState.displacement,
+        separation: physicsState.dropSeparation,
+        timestamp: performance.now(),
+      });
+      state.score = physicsState.displacement;
+      updateScoreReadout();
+    }
+
+    function updateBallTelemetry(dtSeconds) {
+      if (!physicsState.ballAggregate) {
+        return;
+      }
+
+      const position = ball.mesh.getAbsolutePosition();
+      if (physicsState.lastBallY !== null) {
+        const descent = physicsState.lastBallY - position.y;
+        if (descent > 0) {
+          physicsState.displacement += descent;
+        }
+      }
+      physicsState.lastBallY = position.y;
+
+      const span = geometry.topY - geometry.bottomY;
+      const along = geometry.topY - (position.y - geometry.ballRadius);
+      const progress = clamp(along / span, 0, 1);
+      const leftX = getRailX(geometry, state, progress, "left");
+      const rightX = getRailX(geometry, state, progress, "right");
+      physicsState.dropSeparation = rightX - leftX;
+
+      updateScoreReadout();
+
+      if (
+        !physicsState.dropTriggered &&
+        (physicsState.dropSeparation - geometry.ballRadius * 2 > 0.0005 ||
+          position.z < geometry.dropPlaneZ)
+      ) {
+        physicsState.dropTriggered = true;
+        ball.state = "resetting";
+        ball.resetTimer = 1.2;
+        ball.mesh.isVisible = false;
+        recordDropEvent();
+      }
+    }
+
+    function stepSimulation(delta) {
+      const dtSeconds = delta / 1000;
+      updateRailMeshes();
+      syncRailBodies(dtSeconds);
+
+      if (physicsState.ready) {
+        updateBallTelemetry(dtSeconds);
+      }
+
+      if (ball.state === "resetting") {
+        ball.resetTimer -= dtSeconds;
+        if (ball.resetTimer <= 0) {
+          resetBall();
+        }
+      }
+    }
+
+    const timing = {
+      lastTick: performance.now(),
+    };
+
+    function updateFrame() {
+      const now = performance.now();
+      const delta = now - timing.lastTick;
+      timing.lastTick = now;
+
+      stepSimulation(delta);
+      scene.render();
+    }
+
     resetBall();
-    setStatus("Ready ✔");
-  } catch (error) {
-    physicsState.ready = false;
+    updateRailMeshes();
+
+    alignColliderToRail(leftRailCollider, "left");
+    alignColliderToRail(rightRailCollider, "right");
+
+    initialisePhysics(ammoModule);
     resetBall();
-    setStatusError(error);
-    console.error(error);
+    setStatus("Scene ready ✔", "green");
+
+    timing.lastTick = performance.now();
+    engine.runRenderLoop(updateFrame);
+
+    debugInterface.ready = true;
+
+    window.addEventListener("resize", () => {
+      engine.resize();
+      updateTilt(tiltSlider.value);
+    });
+
+  } catch (err) {
+    const message = err?.message ?? String(err);
+    setStatus(`❌ Initialization failed: ${message}`, "darkred");
+    console.error(err);
   }
-}
-
-function syncRailBodies(dtSeconds) {
-  if (!physicsState.ready) {
-    return;
-  }
-
-  const enginePhysics = scene.getPhysicsEngine?.();
-  const step = enginePhysics?.getTimeStep?.() ?? dtSeconds;
-  const leftBody = physicsState.leftAggregate?.body;
-  const rightBody = physicsState.rightAggregate?.body;
-
-  if (leftBody) {
-    const { position, rotation } = getWorldTransform(leftRailCollider);
-    leftBody.setTargetTransform?.(position, rotation, step);
-  }
-
-  if (rightBody) {
-    const { position, rotation } = getWorldTransform(rightRailCollider);
-    rightBody.setTargetTransform?.(position, rotation, step);
-  }
-}
-
-function updateScoreReadout() {
-  scoreValue.textContent = `${physicsState.displacement.toFixed(3)} m`;
-}
-
-function recordDropEvent() {
-  physicsState.events.push({
-    type: "drop",
-    displacement: physicsState.displacement,
-    separation: physicsState.dropSeparation,
-    timestamp: performance.now(),
-  });
-  state.score = physicsState.displacement;
-  updateScoreReadout();
-}
-
-function updateBallTelemetry(dtSeconds) {
-  if (!physicsState.ballAggregate) {
-    return;
-  }
-
-  const position = ball.mesh.getAbsolutePosition();
-  if (physicsState.lastBallY !== null) {
-    const descent = physicsState.lastBallY - position.y;
-    if (descent > 0) {
-      physicsState.displacement += descent;
-    }
-  }
-  physicsState.lastBallY = position.y;
-
-  const span = geometry.topY - geometry.bottomY;
-  const along = geometry.topY - (position.y - geometry.ballRadius);
-  const progress = clamp(along / span, 0, 1);
-  const leftX = getRailX(geometry, state, progress, "left");
-  const rightX = getRailX(geometry, state, progress, "right");
-  physicsState.dropSeparation = rightX - leftX;
-
-  updateScoreReadout();
-
-  if (
-    !physicsState.dropTriggered &&
-    (physicsState.dropSeparation - geometry.ballRadius * 2 > 0.0005 ||
-      position.z < geometry.dropPlaneZ)
-  ) {
-    physicsState.dropTriggered = true;
-    ball.state = "resetting";
-    ball.resetTimer = 1.2;
-    ball.mesh.isVisible = false;
-    recordDropEvent();
-  }
-}
-
-function stepSimulation(delta) {
-  const dtSeconds = delta / 1000;
-  updateRailMeshes();
-  syncRailBodies(dtSeconds);
-
-  if (physicsState.ready) {
-    updateBallTelemetry(dtSeconds);
-  }
-
-  if (ball.state === "resetting") {
-    ball.resetTimer -= dtSeconds;
-    if (ball.resetTimer <= 0) {
-      resetBall();
-    }
-  }
-}
-
-const timing = {
-  lastTick: performance.now(),
-};
-
-function updateFrame() {
-  const now = performance.now();
-  const delta = now - timing.lastTick;
-  timing.lastTick = now;
-
-  stepSimulation(delta);
-  scene.render();
-}
-
-resetBall();
-updateRailMeshes();
-
-alignColliderToRail(leftRailCollider, "left");
-alignColliderToRail(rightRailCollider, "right");
-
-setStatus("Scene objects created");
-const physicsReadyPromise = initialisePhysics();
-
-timing.lastTick = performance.now();
-engine.runRenderLoop(updateFrame);
-
-debugInterface.ready = true;
-
-window.addEventListener("resize", () => {
-  engine.resize();
-  updateTilt(tiltSlider.value);
-});
-
+})();
