@@ -23,7 +23,7 @@ import {
   PhysicsMotionType,
   PhysicsShapeType,
   AmmoJSPlugin,
-} from "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/+esm";
+} from "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/index.js";
 import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Meshes/Builders/tubeBuilder.js";
 import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Meshes/Builders/sphereBuilder.js";
 import "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.34.0/Materials/standardMaterial.js";
