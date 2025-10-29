@@ -34,49 +34,44 @@ Feature: SpaceBall visual loading status bar
     When each stage starts or completes
     Then the code should update the status text accordingly, for example:
       """
-      const status = document.getElementById('status-bar');
-      function setStatus(text) {
-          if (status) status.textContent = text;
-          console.log(text);
+      const statusBar = document.getElementById('status-bar');
+      function setStatus(text, color) {
+          if (!statusBar) return;
+          statusBar.textContent = text;
+          if (color) statusBar.style.background = color;
+          console.log('[SpaceBall]', text);
       }
 
-      setStatus('Loading Ammo.js...');
-      await new Promise(r => setTimeout(r, 100)); // allow UI update
-      await Ammo();
-      setStatus('Ammo loaded');
+      try {
+          setStatus('Loading Ammo.js...');
+          const ammoModule = await Ammo();
+          setStatus('Ammo.js loaded');
 
-      setStatus('Initializing Babylon engine...');
-      const engine = new BABYLON.Engine(canvas, true);
-      const scene = new BABYLON.Scene(engine);
-      setStatus('Babylon engine ready');
+          setStatus('Creating Babylon engine...');
+          const engine = new BABYLON.Engine(canvas, true);
+          const scene = new BABYLON.Scene(engine);
+          setStatus('Babylon engine ready');
 
-      setStatus('Initializing physics...');
-      const plugin = new BABYLON.AmmoJSPlugin(true, Ammo);
-      scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), plugin);
-      setStatus('Physics enabled');
+          setStatus('Enabling physics...');
+          const plugin = new BABYLON.AmmoJSPlugin(true, ammoModule);
+          scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), plugin);
+          setStatus('Physics enabled');
 
-      setStatus('Creating scene objects...');
-      createBallAndRails(scene);
-      setStatus('Scene objects created');
-
-      setStatus('Ready ✔');
+          setStatus('Creating game objects...');
+          await createSceneObjects(scene);
+          setStatus('Scene ready ✔', 'green');
+      } catch (err) {
+          setStatus('❌ Initialization failed: ' + (err.message || err), 'darkred');
+          console.error(err);
+      }
       """
 
   Scenario: Handle failure gracefully
     Given any step throws an error
     When an exception occurs
-    Then the status bar should display the message in red text:
-      """
-      catch (err) {
-          if (status) {
-              status.style.background = 'darkred';
-              status.textContent = '❌ ' + (err.message || 'Initialization failed');
-          }
-          console.error(err);
-      }
-      """
+    Then the status bar background should switch to red while showing the failure message
 
   Expected outcome:
     Given the page reloads
-    Then the top bar should show "Initializing...", then step-by-step messages as each part loads
-    And if the game freezes or crashes, the last message indicates exactly which stage failed
+    Then the top bar should animate through "Loading Ammo.js", "Ammo.js loaded", "Creating Babylon engine", "Physics enabled", and finish with "Scene ready ✔"
+    And if the game freezes or crashes, the final visible message must show which stage failed
