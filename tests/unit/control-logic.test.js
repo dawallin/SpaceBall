@@ -1,5 +1,4 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
+import { test, expect } from '@jest/globals';
 import {
   clamp,
   normalizedToOffset,
@@ -24,31 +23,31 @@ const baseState = {
 };
 
 test('normalized touch offsets clamp to rail travel', () => {
-  assert.equal(normalizedToOffset(0, geometry.railTravel), -geometry.railTravel);
-  assert.equal(normalizedToOffset(1, geometry.railTravel), geometry.railTravel);
-  assert.equal(normalizedToOffset(0.5, geometry.railTravel), 0);
-  assert.equal(normalizedToOffset(-0.2, geometry.railTravel), -geometry.railTravel);
-  assert.equal(normalizedToOffset(1.5, geometry.railTravel), geometry.railTravel);
+  expect(normalizedToOffset(0, geometry.railTravel)).toBe(-geometry.railTravel);
+  expect(normalizedToOffset(1, geometry.railTravel)).toBe(geometry.railTravel);
+  expect(normalizedToOffset(0.5, geometry.railTravel)).toBe(0);
+  expect(normalizedToOffset(-0.2, geometry.railTravel)).toBe(-geometry.railTravel);
+  expect(normalizedToOffset(1.5, geometry.railTravel)).toBe(geometry.railTravel);
 });
 
 test('slider values map to the configured tilt range', () => {
-  assert.equal(sliderValueToTilt(0), 8);
-  assert.equal(sliderValueToTilt(100), 28);
-  assert.equal(sliderValueToTilt(50), 18);
+  expect(sliderValueToTilt(0)).toBe(8);
+  expect(sliderValueToTilt(100)).toBe(28);
+  expect(sliderValueToTilt(50)).toBe(18);
 });
 
 test('tilt acceleration scales with the tilt angle', () => {
   const gentle = tiltToAcceleration(10);
   const steep = tiltToAcceleration(25);
-  assert.ok(steep > gentle);
+  expect(steep).toBeGreaterThan(gentle);
 });
 
 test('rail positions respect independent offsets', () => {
   const state = { ...baseState, leftOffset: geometry.railTravel, rightOffset: -geometry.railTravel };
   const leftBottom = getRailX(geometry, state, 1, 'left');
   const rightBottom = getRailX(geometry, state, 1, 'right');
-  assert.ok(leftBottom > geometry.centerX - geometry.railBottomSpread / 2);
-  assert.ok(rightBottom < geometry.centerX + geometry.railBottomSpread / 2);
+  expect(leftBottom).toBeGreaterThan(geometry.centerX - geometry.railBottomSpread / 2);
+  expect(rightBottom).toBeLessThan(geometry.centerX + geometry.railBottomSpread / 2);
 
   const clampedLeft = getRailX(
     geometry,
@@ -56,27 +55,27 @@ test('rail positions respect independent offsets', () => {
     1,
     'left'
   );
-  assert.equal(clampedLeft, leftBottom);
+  expect(clampedLeft).toBe(leftBottom);
 });
 
 test('pocket layouts stay centred and ordered', () => {
   const pockets = createPocketLayouts({ ...geometry, bottomY: 500 });
-  assert.equal(pockets.length, 6);
+  expect(pockets).toHaveLength(6);
   pockets.forEach((pocket) => {
-    assert.equal(pocket.x, geometry.centerX);
+    expect(pocket.x).toBe(geometry.centerX);
   });
   const names = pockets.map((pocket) => pocket.name);
-  assert.deepEqual(names, ['Mercury', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Pluto']);
+  expect(names).toEqual(['Mercury', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Pluto']);
   for (let i = 1; i < pockets.length; i += 1) {
-    assert.ok(pockets[i].y < pockets[i - 1].y);
+    expect(pockets[i].y).toBeLessThan(pockets[i - 1].y);
   }
   const highlighted = pockets.filter((pocket) => pocket.highlight === true);
-  assert.equal(highlighted.length, 1);
-  assert.equal(highlighted[0].name, 'Pluto');
+  expect(highlighted).toHaveLength(1);
+  expect(highlighted[0].name).toBe('Pluto');
 });
 
 test('clamp confines values within the provided range', () => {
-  assert.equal(clamp(5, 0, 10), 5);
-  assert.equal(clamp(-5, 0, 10), 0);
-  assert.equal(clamp(20, 0, 10), 10);
+  expect(clamp(5, 0, 10)).toBe(5);
+  expect(clamp(-5, 0, 10)).toBe(0);
+  expect(clamp(20, 0, 10)).toBe(10);
 });
