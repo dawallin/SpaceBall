@@ -1,118 +1,110 @@
-// === Loader/Debug utilities ===
+console.log('=== SpaceBall Startup ===');
+const scriptLoadResults = ['babylon.js', 'ammo.js'].map((src) => {
+  const found = [...document.scripts].some((s) => s.src.includes(src));
+  console.log(found ? `✅ Found ${src}` : `❌ Missing ${src}`);
+  return { src, found };
+});
+console.log('Document readyState:', document.readyState);
+
 const status = document.getElementById('status-bar');
-if (!status) {
-  console.warn('⚠ status-bar element not found in DOM — debugging overlay disabled.');
+function logLine(msg) {
+  console.log('[SpaceBall]', msg);
+  if (status) status.textContent = msg;
 }
-const url = new URL(location.href);
-const DEBUG_MODE = url.searchParams.has('debug');
-
-const debugPanel = document.createElement('div');
-debugPanel.id = 'debug-panel';
-debugPanel.style.cssText = `
-  position: fixed;
-  top: 40px;
-  left: 0;
-  width: 100%;
-  max-height: 35vh;
-  overflow: auto;
-  background: #0b1022;
-  color: #d9e8ff;
-  font-family: monospace;
-  font-size: 12px;
-  padding: 6px;
-  z-index: 9998;
-  display: ${DEBUG_MODE ? 'block' : 'none'};
-`;
-document.body.appendChild(debugPanel);
-
-function logDebug(message, color) {
-  console.log('[SpaceBall]', message);
-  if (status) {
-    status.textContent = message;
-    if (color) status.style.background = color;
-  }
-  if (DEBUG_MODE) {
-    const line = document.createElement('div');
-    line.textContent = message;
-    debugPanel.appendChild(line);
-  }
-}
-
-const statusHistory = [];
-let lastUpdateTs = performance.now();
-let lastKnownColor = status ? getComputedStyle(status).backgroundColor : '#003366';
-
-function recordStatus(message, color) {
-  lastUpdateTs = performance.now();
-  if (color) {
-    lastKnownColor = color;
-  }
-  const entry = `[${(performance.now() / 1000).toFixed(3)}s] ${message}`;
-  statusHistory.push(entry);
-  if (statusHistory.length > 60) {
-    statusHistory.shift();
-  }
-  if (status) {
-    if (!color && lastKnownColor) {
-      status.style.background = lastKnownColor;
-    }
-    status.title = statusHistory.slice(-10).join('\n');
-  }
-}
-
-function updateStatus(message, color) {
-  logDebug(message, color);
-  recordStatus(message, color);
-}
-
 function setStatus(text, color) {
-  if (typeof status === 'undefined' || !status) {
-    console.warn('⚠ status element missing, skipping update:', text);
-    console.log('[SpaceBall]', text);
+  if (!status) {
+    console.warn('⚠ No status element');
     return;
   }
-  updateStatus(text, color);
+  status.textContent = text;
+  if (color) status.style.background = color;
+  updateScriptBannerPosition();
+  logLine(text);
 }
-
-function logTrace(message) {
-  console.log('[SpaceBall]', message);
-  if (DEBUG_MODE) {
-    const line = document.createElement('div');
-    line.textContent = message;
-    debugPanel.appendChild(line);
-  }
-}
-
-async function step(name, fn, colorWorking = '#0066cc', colorDone = '#118833') {
-  if (typeof status === 'undefined' || !status) {
-    console.warn('⚠ status element missing, skipping update:', `${name}…`);
-  }
-  const t0 = performance.now();
-  updateStatus(`${name}…`, colorWorking);
+async function step(name, fn) {
+  const start = performance.now();
   try {
+    setStatus(name + '…', '#0066cc');
     const result = await fn();
-    const dt = (performance.now() - t0).toFixed(1);
-    updateStatus(`${name} ✔ (${dt} ms)`, colorDone);
+    const dur = (performance.now() - start).toFixed(1);
+    setStatus(`${name} ✔ (${dur}ms)`, '#009933');
     return result;
   } catch (err) {
-    const msg = err && err.message ? err.message : String(err);
-    const dt = (performance.now() - t0).toFixed(1);
-    updateStatus(`❌ ${name} failed (${dt} ms): ${msg}`, 'darkred');
-    logTrace(`STACK: ${err && err.stack ? err.stack : '(no stack)'}`);
+    const msg = `${name} failed: ${err.message}`;
+    setStatus('❌ ' + msg, 'darkred');
+    logLine(err.stack || msg);
     throw err;
   }
+}
+
+let scriptBanner;
+function updateScriptBannerPosition() {
+  if (!scriptBanner) {
+    return;
+  }
+  const statusHeight = status ? status.getBoundingClientRect().height : 0;
+  scriptBanner.style.top = `${statusHeight}px`;
+}
+
+scriptBanner = document.createElement('div');
+scriptBanner.style.cssText =
+  'position:fixed;left:0;width:100%;background:#001b33;color:#d9e8ff;font-family:monospace;font-size:12px;padding:4px 10px;z-index:9998;display:flex;gap:12px;flex-wrap:wrap;box-shadow:0 2px 6px rgba(0,0,0,0.3);';
+scriptLoadResults.forEach(({ src, found }) => {
+  const tag = document.createElement('span');
+  tag.textContent = `${found ? '✅' : '❌'} ${src}`;
+  tag.style.color = found ? '#6cff8b' : '#ff6b6b';
+  scriptBanner.appendChild(tag);
+});
+if (status) {
+  status.insertAdjacentElement('afterend', scriptBanner);
+} else {
+  document.body.insertAdjacentElement('afterbegin', scriptBanner);
+}
+updateScriptBannerPosition();
+window.addEventListener('resize', updateScriptBannerPosition);
+
+const missingScripts = scriptLoadResults.filter((entry) => !entry.found);
+if (missingScripts.length) {
+  setStatus(`❌ Missing: ${missingScripts.map((e) => e.src).join(', ')}`, 'darkred');
+} else {
+  setStatus('External scripts detected — bootstrapping…', '#1b4f8f');
+}
+
+if (typeof window.BABYLON === 'undefined') {
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    "<div style=\"background:#aa0000;color:#fff;font-family:monospace;padding:8px;z-index:10000;\">❌ Babylon.js missing — check script order in index.html</div>"
+  );
+}
+
+const DEBUG_MODE = new URL(location.href).searchParams.has('debug');
+if (DEBUG_MODE) {
+  const debugPanel = document.createElement('div');
+  debugPanel.style.cssText =
+    'position:fixed;top:40px;left:0;width:100%;max-height:35vh;overflow:auto;background:#0b1022;color:#d9e8ff;font-family:monospace;font-size:12px;padding:6px;z-index:9998;';
+  document.body.appendChild(debugPanel);
+  const alignDebugPanel = () => {
+    const statusHeight = status ? status.getBoundingClientRect().height : 0;
+    const bannerHeight = scriptBanner ? scriptBanner.getBoundingClientRect().height : 0;
+    debugPanel.style.top = `${statusHeight + bannerHeight + 8}px`;
+  };
+  alignDebugPanel();
+  window.addEventListener('resize', alignDebugPanel);
+  const oldLog = console.log;
+  console.log = (...args) => {
+    oldLog(...args);
+    const line = document.createElement('div');
+    line.textContent = args.join(' ');
+    debugPanel.appendChild(line);
+  };
+  logLine('🧠 Debug panel active');
 }
 
 window.addEventListener('error', (e) => {
   setStatus(`❌ JS crash: ${e.message}`, 'darkred');
   const crashBanner = document.createElement('div');
-  crashBanner.style.cssText = `
-    position: fixed; bottom: 0; left: 0; right: 0;
-    background: #aa0000; color: #fff;
-    font-family: monospace; font-size: 12px;
-    padding: 6px 10px; z-index: 10000;
-    max-height: 20vh; overflow: auto;
-  `;
+  crashBanner.style.cssText =
+    'position:fixed;bottom:0;left:0;right:0;background:#aa0000;color:#fff;font-family:monospace;font-size:12px;padding:6px 10px;z-index:10000;max-height:20vh;overflow:auto;';
   const stack = e.error && e.error.stack ? e.error.stack : '';
   crashBanner.textContent = '❌ ' + e.message + '\n' + stack;
   document.body.appendChild(crashBanner);
@@ -127,37 +119,12 @@ window.addEventListener('unhandledrejection', (e) => {
       : String(e.reason);
   setStatus(`❌ Promise rejection: ${reasonText}`, 'darkred');
   const crashBanner = document.createElement('div');
-  crashBanner.style.cssText = `
-    position: fixed; bottom: 0; left: 0; right: 0;
-    background: #aa0000; color: #fff;
-    font-family: monospace; font-size: 12px;
-    padding: 6px 10px; z-index: 10000;
-    max-height: 20vh; overflow: auto;
-  `;
+  crashBanner.style.cssText =
+    'position:fixed;bottom:0;left:0;right:0;background:#aa0000;color:#fff;font-family:monospace;font-size:12px;padding:6px 10px;z-index:10000;max-height:20vh;overflow:auto;';
   const reasonStack = e.reason && e.reason.stack ? `\n${e.reason.stack}` : '';
   crashBanner.textContent = '❌ Promise Rejection: ' + reasonText + reasonStack;
   document.body.appendChild(crashBanner);
 });
-
-setInterval(() => {
-  const delta = performance.now() - lastUpdateTs;
-  if (delta > 3000 && status) {
-    const currentText = status.textContent || '';
-    if (currentText.trim().startsWith('❌')) {
-      return;
-    }
-    if (!currentText.includes('(still working)')) {
-      updateStatus(`${currentText} (still working)`, '#cc9900');
-    } else {
-      status.style.background = '#cc9900';
-    }
-  }
-}, 1500);
-
-logTrace(`UA: ${navigator.userAgent}`);
-logTrace(`Online: ${navigator.onLine}`);
-logTrace(`Location: ${location.href}`);
-logTrace(`ReadyState: ${document.readyState}`);
 
 let clamp;
 let normalizedToOffset;
@@ -219,7 +186,7 @@ function degToRad(degrees) {
       if (typeof window.BABYLON === 'undefined') {
         throw new Error('BABYLON global missing (babylon.js not loaded)');
       } else {
-        logDebug('✅ Babylon.js successfully detected.');
+        logLine('✅ Babylon.js successfully detected');
       }
     });
 
@@ -957,6 +924,7 @@ function degToRad(degrees) {
       setTimeout(() => {
         if (status) status.style.display = 'none';
         if (dbgEl) dbgEl.style.display = 'none';
+        if (scriptBanner) scriptBanner.style.display = 'none';
       }, 2500);
     } else {
       logLine('DEBUG MODE ON (bar/panel persist)');
