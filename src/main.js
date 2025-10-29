@@ -761,10 +761,22 @@ function degToRad(degrees) {
       }
 
       setStatus('Creating physics materials…', '#22a9cc');
-      const material = new PhysicsMaterial();
-      material.friction = 0.68;
-      material.restitution = 0.02;
-      material.rollingFriction = 0.06;
+      // Try to create a PhysicsMaterial if available; otherwise use a plain object
+      let material;
+      if (typeof PhysicsMaterial === 'function') {
+        material = new PhysicsMaterial();
+        material.friction = 0.68;
+        material.restitution = 0.02;
+        material.rollingFriction = 0.06;
+      } else {
+        // In UMD/global Babylon.js, PhysicsMaterial may be undefined.
+        // Use an object with the same properties for friction and restitution.
+        material = {
+          friction: 0.68,
+          restitution: 0.02,
+          rollingFriction: 0.06,
+        };
+      }
 
       setStatus('Creating ball physics aggregate…', '#22b9cc');
       const ballAggregate = new PhysicsAggregate(
