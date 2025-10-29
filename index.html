@@ -130,8 +130,22 @@
       </footer>
     </main>
     <!-- Load Babylon and Ammo before main.js -->
-    <script src="https://cdn.babylonjs.com/babylon.js"></script>
-    <script src="https://cdn.babylonjs.com/ammo.js"></script>
-    <script src="src/main.js"></script>
+    <script src="https://cdn.babylonjs.com/babylon.js" defer></script>
+    <script src="https://cdn.babylonjs.com/ammo.js" defer></script>
+    <script>
+      // Wait for both Babylon and Ammo to be available before loading main.js
+      function whenReady(cb) {
+        const check = () => {
+          if (window.BABYLON && window.Ammo) cb();
+          else setTimeout(check, 50);
+        };
+        check();
+      }
+      whenReady(() => {
+        const s = document.createElement('script');
+        s.src = 'src/main.js?v=' + Date.now(); // cache-bust
+        document.body.appendChild(s);
+      });
+    </script>
   </body>
 </html>
