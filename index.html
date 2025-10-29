@@ -129,28 +129,28 @@
         </button>
       </footer>
     </main>
-    <!-- Load Babylon.js and Ammo.js. Do NOT defer them -->
+    <!-- Babylon 7 + Ammo v2 -->
+    <script src="https://cdn.babylonjs.com/ammo.wasm.js"></script>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
-    <script src="https://cdn.babylonjs.com/ammo.js"></script>
     <script>
-      // Wait until both Babylon and Ammo are actually available.
+      // Wait until both Ammo and Babylon are ready
       (function waitForGlobals() {
-        // show a message in the status bar while waiting
         const statusEl = document.getElementById('status-bar');
-        function updateWaiting() {
-          const babylonReady = !!window.BABYLON;
-          const ammoReady = !!window.Ammo;
-          const msg = `Waiting for globals: BABYLON ${babylonReady ? '✔' : '✘'}, Ammo ${ammoReady ? '✔' : '✘'}`;
-          if (statusEl) statusEl.textContent = msg;
+        function show(msg, color) {
+          if (statusEl) {
+            statusEl.textContent = msg;
+            statusEl.style.background = color || '#004';
+          }
+          console.log('[SpaceBall]', msg);
         }
-        updateWaiting();
         if (window.BABYLON && window.Ammo) {
-          // Once both are ready, load main.js with cache-busting query
-          const script = document.createElement('script');
-          script.src = 'src/main.js?v=' + Date.now();
-          document.body.appendChild(script);
+          show('✅ Babylon + Ammo detected, launching main.js', '#0a3');
+          const s = document.createElement('script');
+          s.src = 'src/main.js?v=' + Date.now(); // cache-bust
+          document.body.appendChild(s);
         } else {
-          setTimeout(waitForGlobals, 50);
+          show(`⏳ Waiting for globals… BABYLON=${!!window.BABYLON} Ammo=${!!window.Ammo}`, '#06a');
+          setTimeout(waitForGlobals, 100);
         }
       })();
     </script>

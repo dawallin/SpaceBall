@@ -33,7 +33,7 @@ async function step(name, fn) {
 }
 
 console.log('=== SpaceBall Startup ===');
-const scriptLoadResults = ['babylon.js', 'ammo.js'].map((src) => {
+const scriptLoadResults = ['babylon.js', 'ammo.wasm.js'].map((src) => {
   const found = [...document.scripts].some((s) => s.src.includes(src));
   console.log(found ? `✅ Found ${src}` : `❌ Missing ${src}`);
   return { src, found };
@@ -214,14 +214,11 @@ function degToRad(degrees) {
       tiltSlider.setAttribute('aria-valuenow', tiltSlider.value);
     });
 
-    const ammoModule = await step('Load Ammo.js', async () => {
-      if (typeof window.Ammo === 'function') {
-        return await window.Ammo();
+    await step('Verify Ammo loader', async () => {
+      if (typeof window.Ammo === 'function' || typeof window.Ammo === 'object') {
+        return;
       }
-      if (typeof window.Ammo === 'object') {
-        return window.Ammo;
-      }
-      throw new Error('Ammo global not found (ammo.js failed to load)');
+      throw new Error('Ammo global not found (ammo.wasm.js failed to load)');
     });
 
     const {
@@ -237,10 +234,8 @@ function degToRad(degrees) {
       StandardMaterial,
       TransformNode,
       PhysicsAggregate,
-      PhysicsMaterial,
       PhysicsMotionType,
       PhysicsShapeType,
-      AmmoJSPlugin,
     } = BABYLON;
 
     await step('Verify playfield canvas', async () => {
@@ -750,10 +745,12 @@ function degToRad(degrees) {
       updateScoreReadout();
     }
 
-    function initialisePhysics(ammo) {
-      setStatus('Configuring physics engine…', '#2299cc');
-      const plugin = new AmmoJSPlugin(true, ammo);
-      scene.enablePhysics(new Vector3(0, -geometry.gravityBase, 0), plugin);
+    async function initialisePhysics() {
+      logLine('Configuring Ammo v2 physics engine…');
+      const plugin = new BABYLON.AmmoJSPlugin(true, await Ammo());
+      scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), plugin);
+      logLine(`Ammo version: ${plugin.version || '(unknown)'} — expecting v2`);
+      logLine('Ammo v2 physics enabled ✔');
       const enginePhysics = scene.getPhysicsEngine();
       enginePhysics?.setTimeStep(1 / 240);
       if (plugin.setSubTimeStep) {
@@ -761,22 +758,11 @@ function degToRad(degrees) {
       }
 
       setStatus('Creating physics materials…', '#22a9cc');
-      // Try to create a PhysicsMaterial if available; otherwise use a plain object
-      let material;
-      if (typeof PhysicsMaterial === 'function') {
-        material = new PhysicsMaterial();
-        material.friction = 0.68;
-        material.restitution = 0.02;
-        material.rollingFriction = 0.06;
-      } else {
-        // In UMD/global Babylon.js, PhysicsMaterial may be undefined.
-        // Use an object with the same properties for friction and restitution.
-        material = {
-          friction: 0.68,
-          restitution: 0.02,
-          rollingFriction: 0.06,
-        };
-      }
+      const material = {
+        friction: 0.68,
+        restitution: 0.02,
+        rollingFriction: 0.06,
+      };
 
       setStatus('Creating ball physics aggregate…', '#22b9cc');
       const ballAggregate = new PhysicsAggregate(
@@ -921,7 +907,7 @@ function degToRad(degrees) {
     });
 
     await step('Enable physics', async () => {
-      initialisePhysics(ammoModule);
+      await initialisePhysics();
     });
 
     await step('Reset ball', async () => {
