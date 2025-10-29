@@ -33,7 +33,7 @@ async function step(name, fn) {
 }
 
 console.log('=== SpaceBall Startup ===');
-const scriptLoadResults = ['babylon.js', 'ammo.wasm.js'].map((src) => {
+const scriptLoadResults = ['babylon.js', 'havok/HavokPhysics_umd.js'].map((src) => {
   const found = [...document.scripts].some((s) => s.src.includes(src));
   console.log(found ? `✅ Found ${src}` : `❌ Missing ${src}`);
   return { src, found };
@@ -214,11 +214,11 @@ function degToRad(degrees) {
       tiltSlider.setAttribute('aria-valuenow', tiltSlider.value);
     });
 
-    await step('Verify Ammo loader', async () => {
-      if (typeof window.Ammo === 'function' || typeof window.Ammo === 'object') {
+    await step('Verify Havok loader', async () => {
+      if (typeof window.HavokPhysics === 'function') {
         return;
       }
-      throw new Error('Ammo global not found (ammo.wasm.js failed to load)');
+      throw new Error('HavokPhysics global not found (HavokPhysics_umd.js failed to load)');
     });
 
     const {
@@ -464,7 +464,6 @@ function degToRad(degrees) {
       leftAggregate: null,
       rightAggregate: null,
       ballAggregate: null,
-      material: null,
       ready: false,
       lastBallY: null,
       displacement: 0,
@@ -746,23 +745,17 @@ function degToRad(degrees) {
     }
 
     async function initialisePhysics() {
-      logLine('Configuring Ammo v2 physics engine…');
-      const plugin = new BABYLON.AmmoJSPlugin(true, await Ammo());
-      scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), plugin);
-      logLine(`Ammo version: ${plugin.version || '(unknown)'} — expecting v2`);
-      logLine('Ammo v2 physics enabled ✔');
+      logLine('Configuring Havok physics engine…');
+      setStatus('Configuring Havok physics engine…', '#22a9cc');
+      const havokInstance = await HavokPhysics();
+      const havokPlugin = new BABYLON.HavokPlugin(true, havokInstance);
+      scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), havokPlugin);
+      logLine('Havok physics enabled ✔');
       const enginePhysics = scene.getPhysicsEngine();
       enginePhysics?.setTimeStep(1 / 240);
-      if (plugin.setSubTimeStep) {
-        plugin.setSubTimeStep(1 / 480);
+      if (havokPlugin.setSubTimeStep) {
+        havokPlugin.setSubTimeStep(1 / 480);
       }
-
-      setStatus('Creating physics materials…', '#22a9cc');
-      const material = {
-        friction: 0.68,
-        restitution: 0.02,
-        rollingFriction: 0.06,
-      };
 
       setStatus('Creating ball physics aggregate…', '#22b9cc');
       const ballAggregate = new PhysicsAggregate(
@@ -770,8 +763,8 @@ function degToRad(degrees) {
         PhysicsShapeType.SPHERE,
         {
           mass: 0.18,
-          restitution: material.restitution,
-          friction: material.friction,
+          restitution: 0.02,
+          friction: 0.68,
         },
         scene
       );
@@ -785,8 +778,8 @@ function degToRad(degrees) {
         PhysicsShapeType.CYLINDER,
         {
           mass: 0,
-          restitution: material.restitution,
-          friction: material.friction,
+          restitution: 0.02,
+          friction: 0.68,
         },
         scene
       );
@@ -797,20 +790,19 @@ function degToRad(degrees) {
         PhysicsShapeType.CYLINDER,
         {
           mass: 0,
-          restitution: material.restitution,
-          friction: material.friction,
+          restitution: 0.02,
+          friction: 0.68,
         },
         scene
       );
       rightAggregate.body.setMotionType?.(PhysicsMotionType.KINEMATIC);
 
-      physicsState.plugin = plugin;
-      physicsState.material = material;
+      physicsState.plugin = havokPlugin;
       physicsState.ballAggregate = ballAggregate;
       physicsState.leftAggregate = leftAggregate;
       physicsState.rightAggregate = rightAggregate;
       physicsState.ready = true;
-      setStatus('Physics aggregates ready ✔', '#118833');
+      setStatus('Havok physics enabled ✔', '#118833');
     }
 
     function syncRailBodies(dtSeconds) {

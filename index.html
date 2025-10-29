@@ -129,28 +129,22 @@
         </button>
       </footer>
     </main>
-    <!-- Babylon 7 + Ammo v2 -->
-    <script src="https://cdn.babylonjs.com/ammo.wasm.js"></script>
+    <!-- Load Babylon.js and Havok for Physics V2 -->
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/havok/HavokPhysics_umd.js"></script>
     <script>
-      // Wait until both Ammo and Babylon are ready
-      (function waitForGlobals() {
-        const statusEl = document.getElementById('status-bar');
-        function show(msg, color) {
-          if (statusEl) {
-            statusEl.textContent = msg;
-            statusEl.style.background = color || '#004';
-          }
-          console.log('[SpaceBall]', msg);
-        }
-        if (window.BABYLON && window.Ammo) {
-          show('✅ Babylon + Ammo detected, launching main.js', '#0a3');
+      // Wait for Babylon and Havok to be ready before starting main.js
+      (function waitForHavok() {
+        const status = document.getElementById('status-bar');
+        if (window.BABYLON && window.HavokPhysics) {
+          status.textContent = '✅ Babylon & Havok loaded — starting game…';
+          // dynamically load main.js with cache-bust
           const s = document.createElement('script');
-          s.src = 'src/main.js?v=' + Date.now(); // cache-bust
+          s.src = 'src/main.js?v=' + Date.now();
           document.body.appendChild(s);
         } else {
-          show(`⏳ Waiting for globals… BABYLON=${!!window.BABYLON} Ammo=${!!window.Ammo}`, '#06a');
-          setTimeout(waitForGlobals, 100);
+          status.textContent = '⏳ Waiting for Babylon & Havok…';
+          setTimeout(waitForHavok, 100);
         }
       })();
     </script>
