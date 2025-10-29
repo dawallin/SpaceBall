@@ -44,6 +44,35 @@ const cameraZoomSlider = document.getElementById("cameraZoomSlider");
 const cameraAlphaReadout = document.getElementById("cameraAlphaReadout");
 const cameraBetaReadout = document.getElementById("cameraBetaReadout");
 const cameraZoomReadout = document.getElementById("cameraZoomReadout");
+const statusBar = document.getElementById("status-bar");
+
+const statusDefaultBackground = statusBar?.style.background ?? "";
+const statusDefaultColor = statusBar?.style.color ?? "";
+
+function setStatus(text) {
+  if (statusBar) {
+    statusBar.style.background = statusDefaultBackground;
+    statusBar.style.color = statusDefaultColor || "white";
+    statusBar.textContent = text;
+  }
+  console.log(text);
+}
+
+function setStatusError(error) {
+  const message =
+    typeof error === "string"
+      ? error
+      : error?.message || "Initialization failed";
+  if (statusBar) {
+    statusBar.style.background = "darkred";
+    statusBar.style.color = "white";
+    statusBar.textContent = `❌ ${message}`;
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const tiltBounds = {
   min: 8,
@@ -79,6 +108,7 @@ const state = {
 tiltReadout.textContent = `${Math.round(state.tilt)}°`;
 tiltSlider.setAttribute("aria-valuenow", tiltSlider.value);
 
+setStatus("Initializing Babylon engine...");
 const engine = new Engine(canvas, true, {
   alpha: true,
   preserveDrawingBuffer: true,
@@ -87,6 +117,9 @@ const engine = new Engine(canvas, true, {
 });
 const scene = new Scene(engine);
 scene.clearColor = new Color4(0, 0, 0, 0);
+
+setStatus("Babylon engine ready");
+setStatus("Creating scene objects...");
 
 const boardPivot = new TransformNode("boardPivot", scene);
 
@@ -538,6 +571,9 @@ function resetBall() {
 
 async function initialisePhysics() {
   try {
+    setStatus("Loading Ammo.js...");
+    await delay(100);
+
     const ammoGlobal = globalThis.Ammo;
     if (!ammoGlobal) {
       throw new Error("Ammo global factory was not found");
@@ -555,6 +591,9 @@ async function initialisePhysics() {
     if (ammoModule && typeof ammoModule.Ammo === "function") {
       ammoModule = await ammoModule.Ammo();
     }
+
+    setStatus("Ammo loaded");
+    setStatus("Initializing physics...");
 
     const plugin = new AmmoJSPlugin(true, ammoModule);
     scene.enablePhysics(new Vector3(0, -geometry.gravityBase, 0), plugin);
@@ -614,11 +653,14 @@ async function initialisePhysics() {
     physicsState.rightAggregate = rightAggregate;
     physicsState.ready = true;
 
+    setStatus("Physics enabled");
     resetBall();
+    setStatus("Ready ✔");
   } catch (error) {
-    console.error("Babylon physics failed to initialise", error);
     physicsState.ready = false;
     resetBall();
+    setStatusError(error);
+    console.error(error);
   }
 }
 
@@ -730,6 +772,7 @@ updateRailMeshes();
 alignColliderToRail(leftRailCollider, "left");
 alignColliderToRail(rightRailCollider, "right");
 
+setStatus("Scene objects created");
 const physicsReadyPromise = initialisePhysics();
 
 timing.lastTick = performance.now();
