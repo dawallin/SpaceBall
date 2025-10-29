@@ -5,7 +5,7 @@ Feature: SpaceBall visual loading status bar
 
   Background:
     Given the game currently starts silently
-    And the developer needs visibility into each step (Ammo load, Babylon setup, physics ready)
+    And the developer needs visibility into each step (Havok load, Babylon setup, physics ready)
     Then a simple HTML progress or text status bar should be shown at the top of the page
 
   Scenario: Add status bar container
@@ -43,9 +43,10 @@ Feature: SpaceBall visual loading status bar
       }
 
       try {
-          setStatus('Loading Ammo.js...');
-          const ammoModule = await Ammo();
-          setStatus('Ammo.js loaded');
+          setStatus('Loading Babylon & Havok...');
+          if (!window.BABYLON || !window.HavokPhysics) {
+              throw new Error('Required globals missing');
+          }
 
           setStatus('Creating Babylon engine...');
           const engine = new BABYLON.Engine(canvas, true);
@@ -53,9 +54,9 @@ Feature: SpaceBall visual loading status bar
           setStatus('Babylon engine ready');
 
           setStatus('Enabling physics...');
-          const plugin = new BABYLON.AmmoJSPlugin(true, ammoModule);
+          const plugin = new BABYLON.HavokPlugin(true, await HavokPhysics());
           scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), plugin);
-          setStatus('Physics enabled');
+          setStatus('Havok physics enabled ✔');
 
           setStatus('Creating game objects...');
           await createSceneObjects(scene);
@@ -73,5 +74,5 @@ Feature: SpaceBall visual loading status bar
 
   Expected outcome:
     Given the page reloads
-    Then the top bar should animate through "Loading Ammo.js", "Ammo.js loaded", "Creating Babylon engine", "Physics enabled", and finish with "Scene ready ✔"
+    Then the top bar should animate through "Loading Babylon & Havok", "Creating Babylon engine", "Enabling physics", and finish with "Havok physics enabled ✔" followed by "Scene ready ✔"
     And if the game freezes or crashes, the final visible message must show which stage failed
