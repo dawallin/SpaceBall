@@ -53,3 +53,4 @@ Feature: Realistic rod-ball mechanical physics
     When the drop event triggers because the ball's center falls below the rod plane
     Then the score should equal the total Y displacement travelled before the drop
     And the event payload should include the final separation distance of the rods
+    And the score readout should format the displacement in metres with three decimal places

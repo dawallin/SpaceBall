@@ -1,5 +1,5 @@
 export default {
   testEnvironment: 'node',
   transform: {},
-  extensionsToTreatAsEsm: ['.js']
+  testMatch: ['<rootDir>/tests/unit/**/*.test.js', '<rootDir>/*.test.js']
 };

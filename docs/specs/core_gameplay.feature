@@ -28,7 +28,7 @@ Feature: Core Space Ball gameplay loop
     Given the player has widened the rails enough for the ball to reach the base
     When the gap becomes wider than the ball's diameter at the exit point
     Then the ball should fall straight down along the Z axis into the scoring zone below the rails
-    And the player's score should increase by one
+    And the player's score readout should update to the total metres travelled before the drop event
     And the ball should reset to the apex for the next attempt within two seconds
 
   Scenario: Scoring pockets descend beneath the rail exit
