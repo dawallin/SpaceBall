@@ -1,5 +1,6 @@
 // === Early debug helpers ===
 const statusEl = document.getElementById('status-bar');
+let debugPanel;
 function logLine(msg) {
   console.log('[SpaceBall]', msg);
   if (statusEl) {
@@ -89,7 +90,7 @@ if (typeof window.BABYLON === 'undefined') {
 
 const DEBUG_MODE = new URL(location.href).searchParams.has('debug');
 if (DEBUG_MODE) {
-  const debugPanel = document.createElement('div');
+  debugPanel = document.createElement('div');
   debugPanel.style.cssText =
     'position:fixed;top:40px;left:0;width:100%;max-height:35vh;overflow:auto;background:#0b1022;color:#d9e8ff;font-family:monospace;font-size:12px;padding:6px;z-index:9998;';
   document.body.appendChild(debugPanel);
@@ -287,7 +288,7 @@ function degToRad(degrees) {
         scene
       );
       cam.lowerRadiusLimit = Number(cameraZoomSlider.min ?? 0.6);
-      cam.upperRadiusLimit = Number(cameraZoomSlider.max ?? 2.4);
+      cam.upperRadiusLimit = Number(cameraZoomSlider.max ?? 2.8);
       cam.lowerBetaLimit = degToRad(safeLowerBetaDeg);
       cam.upperBetaLimit = degToRad(safeUpperBetaDeg);
       cam.wheelPrecision = 120;
@@ -311,7 +312,7 @@ function degToRad(degrees) {
       const zoom = clamp(
         Number(cameraZoomSlider.value) || 0,
         Number(cameraZoomSlider.min) || 0.6,
-        Number(cameraZoomSlider.max) || 2.4
+        Number(cameraZoomSlider.max) || 2.8
       );
 
       camera.alpha = degToRad(alphaDeg);
@@ -925,7 +926,7 @@ function degToRad(degrees) {
     if (!DEBUG_MODE) {
       setTimeout(() => {
         if (statusEl) statusEl.style.display = 'none';
-        if (dbgEl) dbgEl.style.display = 'none';
+        if (debugPanel) debugPanel.style.display = 'none';
         if (scriptBanner) scriptBanner.style.display = 'none';
       }, 2500);
     } else {
