@@ -486,9 +486,9 @@ function degToRad(degrees) {
       const boardWidth = geometry.railBottomSpread * 1.5; // slightly wider than rails
       const boardThickness = geometry.pocketRadius * 2.5; // thickness along z
 
-      // Position board so its front face sits at dropFloorZ + half thickness
+      // Position board so its front face sits at dropFloorZ and the rest extends deeper (negative z)
       const boardCenterY = (yMin + yMax) / 2;
-      const boardCenterZ = geometry.dropFloorZ + boardThickness / 2;
+      const boardCenterZ = geometry.dropFloorZ - boardThickness / 2;
 
       // Wooden plate
       const board = MeshBuilder.CreateBox(
@@ -1008,11 +1008,12 @@ function degToRad(degrees) {
       alignColliderToRail(rightRailCollider, 'right');
     });
 
+    // enable physics first
     await step('Enable physics', async () => {
       await initialisePhysics();
     });
 
-    // Now physics is active; create board safely
+    // now create the score board, physics engine exists
     await step('Create score board', createScoreBoard);
 
     await step('Reset ball', async () => {
