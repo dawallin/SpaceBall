@@ -268,27 +268,36 @@ function degToRad(degrees) {
       if (!cameraAlphaSlider || !cameraBetaSlider || !cameraZoomSlider) {
         throw new Error('Camera controls missing');
       }
+      const alphaRange = {
+        min: Number(cameraAlphaSlider.min ?? 0),
+        max: Number(cameraAlphaSlider.max ?? 360),
+      };
       const betaRange = {
         min: Number(cameraBetaSlider.min ?? 0),
         max: Number(cameraBetaSlider.max ?? 360),
       };
       safeLowerBetaDeg = Math.min(betaRange.min + betaLimitPadding, betaRange.max - betaLimitPadding);
       safeUpperBetaDeg = Math.max(betaRange.min + betaLimitPadding, betaRange.max - betaLimitPadding);
+      const initialAlphaDegrees = clamp(
+        Number(cameraAlphaSlider.value ?? 90) || 0,
+        alphaRange.min,
+        alphaRange.max
+      );
       const initialBetaDegrees = clamp(
-        Number(cameraBetaSlider.value ?? 60) || 0,
+        Number(cameraBetaSlider.value ?? 45) || 0,
         safeLowerBetaDeg,
         safeUpperBetaDeg
       );
       const cam = new ArcRotateCamera(
         'camera',
-        degToRad(cameraAlphaSlider.value ?? 20),
+        degToRad(initialAlphaDegrees),
         degToRad(initialBetaDegrees),
-        Number(cameraZoomSlider.value ?? 1.2),
+        Number(cameraZoomSlider.value ?? 1.5),
         new Vector3(0, -0.05, -0.35),
         scene
       );
       cam.lowerRadiusLimit = Number(cameraZoomSlider.min ?? 0.6);
-      cam.upperRadiusLimit = Number(cameraZoomSlider.max ?? 2.8);
+      cam.upperRadiusLimit = Number(cameraZoomSlider.max ?? 2.4);
       cam.lowerBetaLimit = degToRad(safeLowerBetaDeg);
       cam.upperBetaLimit = degToRad(safeUpperBetaDeg);
       cam.wheelPrecision = 120;
@@ -302,7 +311,9 @@ function degToRad(degrees) {
       if (!cameraAlphaSlider || !cameraBetaSlider || !cameraZoomSlider) {
         return;
       }
-      const alphaDeg = clamp(Number(cameraAlphaSlider.value) || 0, 0, 360);
+      const alphaMin = Number(cameraAlphaSlider.min) || 0;
+      const alphaMax = Number(cameraAlphaSlider.max) || 360;
+      const alphaDeg = clamp(Number(cameraAlphaSlider.value) || 0, alphaMin, alphaMax);
       const betaMin = Number(cameraBetaSlider.min) || 0;
       const betaMax = Number(cameraBetaSlider.max) || 360;
       const betaDeg = clamp(Number(cameraBetaSlider.value) || 0, betaMin, betaMax);
@@ -312,7 +323,7 @@ function degToRad(degrees) {
       const zoom = clamp(
         Number(cameraZoomSlider.value) || 0,
         Number(cameraZoomSlider.min) || 0.6,
-        Number(cameraZoomSlider.max) || 2.8
+        Number(cameraZoomSlider.max) || 2.4
       );
 
       camera.alpha = degToRad(alphaDeg);
