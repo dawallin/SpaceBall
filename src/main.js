@@ -473,6 +473,10 @@ function degToRad(degrees) {
 
     async function createScoreBoard() {
       setStatus('Creating score board…', '#2277cc');
+      if (!scene.getPhysicsEngine()) {
+        console.warn('[SpaceBall] ⚠ Physics engine not ready, skipping score board.');
+        return;
+      }
       // Compute board dimensions based on pocket layout
       const pockets = createPocketLayouts(geometry);
       const pocketCount = pockets.length;
@@ -564,8 +568,6 @@ function degToRad(degrees) {
       }
       setStatus('Score board ready ✔', '#118833');
     }
-
-    await step('Create score board', createScoreBoard);
 
     const physicsState = {
       plugin: null,
@@ -1009,6 +1011,9 @@ function degToRad(degrees) {
     await step('Enable physics', async () => {
       await initialisePhysics();
     });
+
+    // Now physics is active; create board safely
+    await step('Create score board', createScoreBoard);
 
     await step('Reset ball', async () => {
       resetBall();
