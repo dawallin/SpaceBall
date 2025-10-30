@@ -471,6 +471,102 @@ function degToRad(degrees) {
 
     const ball = await step('Create ball', createBall);
 
+    async function createScoreBoard() {
+      setStatus('Creating score board…', '#2277cc');
+      // Compute board dimensions based on pocket layout
+      const pockets = createPocketLayouts(geometry);
+      const pocketCount = pockets.length;
+      const yMin = pockets[pocketCount - 1].y - geometry.pocketRadius * 1.5;
+      const yMax = pockets[0].y + geometry.pocketRadius * 1.5;
+      const boardHeight = Math.abs(yMax - yMin);
+      const boardWidth = geometry.railBottomSpread * 1.5; // slightly wider than rails
+      const boardThickness = geometry.pocketRadius * 2.5; // thickness along z
+
+      // Position board so its front face sits at dropFloorZ + half thickness
+      const boardCenterY = (yMin + yMax) / 2;
+      const boardCenterZ = geometry.dropFloorZ + boardThickness / 2;
+
+      // Wooden plate
+      const board = MeshBuilder.CreateBox(
+        'scoreBoard',
+        {
+          width: boardWidth,
+          height: boardHeight,
+          depth: boardThickness,
+        },
+        scene
+      );
+      const boardMat = new StandardMaterial('scoreBoardMat', scene);
+      boardMat.diffuseColor = new Color3(0.3, 0.15, 0.05); // wood colour
+      board.material = boardMat;
+      board.position.set(geometry.centerX, boardCenterY, boardCenterZ);
+      board.parent = boardPivot;
+
+      // Static physics for the plate
+      const boardAgg = new PhysicsAggregate(
+        board,
+        PhysicsShapeType.BOX,
+        {
+          mass: 0,
+          restitution: 0.02,
+          friction: 0.68,
+        },
+        scene
+      );
+      boardAgg.body.setMotionType?.(PhysicsMotionType.STATIC);
+
+      // Create sloped funnels for each pocket
+      // Each funnel is built from a few stacked cylinder segments with decreasing radius
+      const segmentsPerFunnel = 3;
+      const slopeFactor = 2.5; // controls how wide the top is relative to the hole
+      for (let i = 0; i < pockets.length; i++) {
+        const p = pockets[i];
+        for (let j = 0; j < segmentsPerFunnel; j++) {
+          const t = j / segmentsPerFunnel;
+          const nextT = (j + 1) / segmentsPerFunnel;
+          const topDiameter = p.radius * 2 * (1 + slopeFactor * (1 - t));
+          const bottomDiameter = p.radius * 2 * (1 + slopeFactor * (1 - nextT));
+          const segHeight = boardThickness / segmentsPerFunnel;
+
+          const funnel = MeshBuilder.CreateCylinder(
+            `pocket_${p.name}_seg${j}`,
+            {
+              diameterTop: topDiameter,
+              diameterBottom: bottomDiameter,
+              height: segHeight,
+              tessellation: 24,
+            },
+            scene
+          );
+          // Material for funnels: slightly lighter wood
+          const funnelMat = new StandardMaterial(`funnelMat_${p.name}_${j}`, scene);
+          funnelMat.diffuseColor = new Color3(0.4, 0.2, 0.1);
+          funnel.material = funnelMat;
+
+          // Position each segment: stack them along z inside the plate
+          const zOffset = -boardThickness / 2 + segHeight * (j + 0.5);
+          funnel.position.set(p.x, p.y, boardCenterZ + zOffset);
+          funnel.parent = boardPivot;
+
+          // Static physics for each funnel segment
+          const funnelAgg = new PhysicsAggregate(
+            funnel,
+            PhysicsShapeType.CYLINDER,
+            {
+              mass: 0,
+              restitution: 0.02,
+              friction: 0.68,
+            },
+            scene
+          );
+          funnelAgg.body.setMotionType?.(PhysicsMotionType.STATIC);
+        }
+      }
+      setStatus('Score board ready ✔', '#118833');
+    }
+
+    await step('Create score board', createScoreBoard);
+
     const physicsState = {
       plugin: null,
       leftAggregate: null,
