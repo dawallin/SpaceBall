@@ -30,6 +30,19 @@
         overflow-wrap: anywhere; /* break long words */
         transition: background 0.3s;
     ">Initializing…</div>
+    <div id="build-info"
+         style="position:fixed;bottom:6px;right:8px;
+                font-family:monospace;font-size:12px;
+                color:#ccc;z-index:9999;">
+      build: <span id="build-timestamp">unknown</span>
+    </div>
+    <script>
+      // Replace inner text with build timestamp at load time
+      const stamp = new Date().toISOString().split('T')[0] + ' ' +
+                    new Date().toTimeString().split(' ')[0];
+      document.getElementById('build-timestamp').textContent = stamp;
+      console.log('[SpaceBall] Build timestamp:', stamp);
+    </script>
     <main class="game-shell">
       <header class="hud">
         <div class="hud__score">
@@ -71,48 +84,46 @@
             <div class="camera-tuner__group">
               <label for="cameraAlphaSlider" class="camera-tuner__label">
                 Orbit
-                <span id="cameraAlphaReadout" class="camera-tuner__value">20°</span>
+                <span id="cameraAlphaReadout" class="camera-tuner__value">90°</span>
               </label>
               <input
                 id="cameraAlphaSlider"
                 class="camera-tuner__slider"
                 type="range"
                 min="0"
-                max="360"
-                step="1"
-                value="20"
+                max="180"
+                value="90"
                 aria-label="Adjust camera orbit"
               />
             </div>
             <div class="camera-tuner__group">
               <label for="cameraBetaSlider" class="camera-tuner__label">
                 Pitch
-                <span id="cameraBetaReadout" class="camera-tuner__value">60°</span>
+                <span id="cameraBetaReadout" class="camera-tuner__value">45°</span>
               </label>
               <input
                 id="cameraBetaSlider"
                 class="camera-tuner__slider"
                 type="range"
-                min="35"
-                max="110"
-                step="1"
-                value="60"
+                min="0"
+                max="90"
+                value="45"
                 aria-label="Adjust camera pitch"
               />
             </div>
             <div class="camera-tuner__group">
               <label for="cameraZoomSlider" class="camera-tuner__label">
                 Zoom
-                <span id="cameraZoomReadout" class="camera-tuner__value">1.20</span>
+                <span id="cameraZoomReadout" class="camera-tuner__value">1.50</span>
               </label>
               <input
                 id="cameraZoomSlider"
                 class="camera-tuner__slider"
                 type="range"
-                min="0.6"
-                max="2.8"
-                step="0.05"
-                value="1.2"
+                min="0.5"
+                max="3.0"
+                step="0.1"
+                value="1.5"
                 aria-label="Adjust camera zoom"
               />
             </div>
@@ -148,5 +159,6 @@
         }
       })();
     </script>
+    <!-- build: ${new Date().toISOString()} -->
   </body>
 </html>
