@@ -488,7 +488,8 @@ function degToRad(degrees) {
 
       // Position board so its front face sits at dropFloorZ and the rest extends deeper (negative z)
       const boardCenterY = (yMin + yMax) / 2;
-      const boardCenterZ = geometry.dropFloorZ - boardThickness / 2;
+      // Align board with the end of the rails (below them)
+      const boardCenterZ = -geometry.railDropLength - boardThickness / 2;
 
       // Wooden plate
       const board = MeshBuilder.CreateBox(
