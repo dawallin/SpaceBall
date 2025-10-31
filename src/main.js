@@ -205,6 +205,7 @@ function degToRad(degrees) {
 
     const controlModule = await step('Load control-logic module', async () => import('./control-logic.js'));
     ({ clamp, normalizedToOffset, sliderValueToTilt, getRailX, createPocketLayouts } = controlModule);
+    const pocketLayout = createPocketLayouts(geometry);
 
     await step('Initialize UI controls', async () => {
       if (!tiltSlider || !tiltReadout) {
@@ -451,6 +452,8 @@ function degToRad(degrees) {
       createRails
     ));
 
+    await step('Create supports', createSupports);
+
     async function createBall() {
       setStatus('Creating ball mesh…', '#2277cc');
       const ballMesh = MeshBuilder.CreateSphere(
@@ -477,18 +480,17 @@ function degToRad(degrees) {
         console.warn('[SpaceBall] ⚠ Physics engine not ready, skipping score board.');
         return;
       }
-      // Compute board dimensions based on pocket layout
-      const pockets = createPocketLayouts(geometry);
-      const pocketCount = pockets.length;
-      const yMin = pockets[pocketCount - 1].y - geometry.pocketRadius * 1.5;
-      const yMax = pockets[0].y + geometry.pocketRadius * 1.5;
-      const boardHeight = Math.abs(yMax - yMin);
-      const boardWidth = geometry.railBottomSpread * 1.5; // slightly wider than rails
-      const boardThickness = geometry.pocketRadius * 2.5; // thickness along z
+      const boardWidth = geometry.railTopSpread * 2.2; // widen board to match sketch silhouette
+      const boardHeight = geometry.pocketRadius * 8.0; // elongated landing area for the planets row
+      const boardThickness = geometry.pocketRadius * 3.0; // modest depth for a wooden plank
 
-      // Position board so its front face sits at dropFloorZ and the rest extends deeper (negative z)
+      // Compute pocket layout and centre the board around it
+      const pockets = pocketLayout;
+      const pocketCount = pockets.length;
+      const yMin = pockets[pocketCount - 1].y - geometry.pocketRadius;
+      const yMax = pockets[0].y + geometry.pocketRadius;
       const boardCenterY = (yMin + yMax) / 2;
-      // Align board with the end of the rails (below them)
+      // Align board top surface with the rod ends (below, not behind)
       const boardCenterZ = -geometry.railDropLength - boardThickness / 2;
 
       // Wooden plate
@@ -568,6 +570,60 @@ function degToRad(degrees) {
         }
       }
       setStatus('Score board ready ✔', '#118833');
+    }
+
+    const supportSpacing = geometry.pocketRadius * 1.6;
+    const supportYOffsets = [-supportSpacing, supportSpacing];
+    const supportZCenter = geometry.dropStartZ - geometry.railDropLength / 2;
+    let railSupports = { left: [], right: [] };
+
+    function positionSupports() {
+      const pockets = pocketLayout;
+      const pocketCount = pockets.length;
+      const yMin = pockets[pocketCount - 1].y - geometry.pocketRadius;
+      const yMax = pockets[0].y + geometry.pocketRadius;
+      const boardCenterY = (yMin + yMax) / 2;
+
+      ['left', 'right'].forEach((side) => {
+        const sideSupports = railSupports[side];
+        if (!sideSupports || !sideSupports.length) {
+          return;
+        }
+        const railX = getRailX(geometry, state, 1, side);
+        supportYOffsets.forEach((offset, index) => {
+          const support = sideSupports[index];
+          if (!support) {
+            return;
+          }
+          support.position.x = railX;
+          support.position.y = boardCenterY + offset;
+          support.position.z = supportZCenter;
+        });
+      });
+    }
+
+    async function createSupports() {
+      const supportsBySide = { left: [], right: [] };
+      const diameter = geometry.railRadius * 1.2;
+      const height = geometry.railDropLength;
+
+      ['left', 'right'].forEach((side) => {
+        supportYOffsets.forEach((offset, index) => {
+          const support = MeshBuilder.CreateCylinder(
+            `${side}RailSupport_${index}`,
+            { height, diameter },
+            scene
+          );
+          support.rotation.x = Math.PI / 2;
+          support.material = railMaterial;
+          support.parent = boardPivot;
+          supportsBySide[side].push(support);
+        });
+      });
+
+      railSupports = supportsBySide;
+      positionSupports();
+      return supportsBySide;
     }
 
     const physicsState = {
@@ -660,6 +716,7 @@ function degToRad(degrees) {
 
       alignColliderToRail(leftRailCollider, 'left');
       alignColliderToRail(rightRailCollider, 'right');
+      positionSupports();
     }
 
     function positionBallOnRails(progress = 0) {
@@ -790,7 +847,7 @@ function degToRad(degrees) {
         },
       },
       getPocketLayout() {
-        return createPocketLayouts(geometry);
+        return pocketLayout.map((p) => ({ ...p }));
       },
     };
 
