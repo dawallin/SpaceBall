@@ -111,6 +111,12 @@ if (DEBUG_MODE) {
   logLine('🧠 Debug panel active');
 }
 
+function debugPositionLog(...args) {
+  if (DEBUG_MODE) {
+    console.log(...args);
+  }
+}
+
 window.addEventListener('error', (e) => {
   setStatus(`❌ JS crash: ${e.message}`, 'darkred');
   const crashBanner = document.createElement('div');
@@ -161,21 +167,43 @@ const tiltBounds = {
   max: 28,
 };
 
+// ─────────────────────────────
+// 🧩 1. GEOMETRY CONFIGURATION
+// ─────────────────────────────
 const geometry = {
-  centerX: 0,
-  topY: 0.28,
-  bottomY: -0.62,
-  ballRadius: 0.019,
-  railTopSpread: 0.032,
-  railBottomSpread: 0.082,
-  railTravel: 0.028,
-  railRadius: 0.006,
-  railDropLength: 0.22,
-  gravityBase: 9.81,
-  dropStartZ: 0,
-  dropFloorZ: -0.32,
-  dropPlaneZ: -0.004,
-  pocketRadius: 0.014,
+  // Rod layout
+  centerX: 0, // Central axis for all meshes (x-axis)
+  topY: 0.28, // Rail entry height (y-axis, near player)
+  bottomY: -0.62, // Rail exit height (y-axis, far end)
+  railLengthY: 0.9, // Distance between topY and bottomY along the y-axis
+  railTopSpread: 0.032, // Distance between rails at the top (x-axis)
+  railBottomSpread: 0.082, // Distance between rails at the bottom (x-axis)
+  railTravel: 0.028, // Maximum offset applied by paddles (x-axis)
+  railRadius: 0.006, // Cylinder radius for rail meshes
+  railDropLength: 0.22, // Vertical drop distance after the rail run (z-axis)
+  dropStartZ: 0, // Z position where the drop begins
+  dropFloorZ: -0.32, // Floor of the drop zone (z-axis)
+  dropPlaneZ: -0.004, // Invisible plane to catch the ball (z-axis)
+
+  // Board dimensions
+  boardWidth: 0.032 * 2.2, // Width (x-axis) aligned with rail spread
+  boardHeight: 0.014 * 8.0, // Height (y-axis) covering pocket layout
+  boardThickness: 0.014 * 3.0, // Depth (z-axis) for the wooden plank
+  boardOffsetZ: -0.22 - (0.014 * 3.0) / 2, // Board centre (below rails)
+
+  // Ball
+  ballRadius: 0.019, // Ball size (sphere radius)
+  ballStartZ: 0, // Starting z position resting on rails
+
+  // Supports
+  supportRadius: 0.006 * 0.6, // Cylinder radius for rail supports
+  supportDropZ: 0 - 0.22 / 2, // Support centre along the drop (z-axis)
+
+  // Pocket layout
+  pocketRadius: 0.014, // Landing pocket radius (y-axis alignment helper)
+
+  // Physics reference
+  gravityBase: 9.81, // Base gravity used for calculations
 };
 
 const state = {
@@ -191,8 +219,13 @@ function degToRad(degrees) {
   return (Number(degrees) * Math.PI) / 180;
 }
 
-(async function bootstrap() {
+// ─────────────────────────────
+// 🚀 3. BOOTSTRAP AND DEBUG
+// ─────────────────────────────
+async function bootstrap() {
   try {
+    setStatus('Initialize SpaceBall…', '#44c');
+    console.log('[SpaceBall Geometry]', geometry);
     await step('Verify Babylon global', async () => {
       const t0 = performance.now();
       if (typeof window.BABYLON === 'undefined') {
@@ -390,12 +423,16 @@ function degToRad(degrees) {
 
     const { railMaterial, ballMaterial } = await step('Prepare materials', prepareMaterials);
 
+    // ─────────────────────────────
+    // ⚙️ 2. SCENE CONSTRUCTION
+    // ─────────────────────────────
+
     function buildRailPath(side) {
       const topX = getRailX(geometry, state, 0, side);
       const bottomX = getRailX(geometry, state, 1, side);
-      const topPoint = new Vector3(topX, geometry.topY, 0);
-      const bottomPoint = new Vector3(bottomX, geometry.bottomY, 0);
-      const dropPoint = new Vector3(bottomX, geometry.bottomY, -geometry.railDropLength);
+      const topPoint = new Vector3(topX, geometry.topY, geometry.dropStartZ);
+      const bottomPoint = new Vector3(bottomX, geometry.bottomY, geometry.dropStartZ);
+      const dropPoint = new Vector3(bottomX, geometry.bottomY, geometry.dropStartZ - geometry.railDropLength);
       return [topPoint, bottomPoint, dropPoint];
     }
 
@@ -409,6 +446,8 @@ function degToRad(degrees) {
       );
       leftRail.material = railMaterial;
       leftRail.parent = boardPivot;
+      debugPositionLog('[SpaceBall] Rail L position:', leftRail.position);
+      debugPositionLog('[SpaceBall] Rail L path:', initialLeftPath.map((point) => point.toString()));
 
       setStatus('Creating right rail mesh…', '#2277cc');
       const initialRightPath = buildRailPath('right');
@@ -419,9 +458,11 @@ function degToRad(degrees) {
       );
       rightRail.material = railMaterial;
       rightRail.parent = boardPivot;
+      debugPositionLog('[SpaceBall] Rail R position:', rightRail.position);
+      debugPositionLog('[SpaceBall] Rail R path:', initialRightPath.map((point) => point.toString()));
 
       setStatus('Creating rail colliders…', '#2277cc');
-      const railLength = Math.abs(geometry.bottomY - geometry.topY);
+      const railLength = geometry.railLengthY;
       const leftRailCollider = MeshBuilder.CreateCylinder(
         'leftRailCollider',
         { height: railLength, diameter: geometry.railRadius * 2 },
@@ -429,6 +470,7 @@ function degToRad(degrees) {
       );
       leftRailCollider.isVisible = false;
       leftRailCollider.parent = boardPivot;
+      debugPositionLog('[SpaceBall] Rail L collider created at:', leftRailCollider.position);
 
       const rightRailCollider = MeshBuilder.CreateCylinder(
         'rightRailCollider',
@@ -437,6 +479,7 @@ function degToRad(degrees) {
       );
       rightRailCollider.isVisible = false;
       rightRailCollider.parent = boardPivot;
+      debugPositionLog('[SpaceBall] Rail R collider created at:', rightRailCollider.position);
 
       setStatus('Rails ready ✔', '#118833');
       return { leftRail, rightRail, leftRailCollider, rightRailCollider, railLength };
@@ -462,6 +505,7 @@ function degToRad(degrees) {
       setStatus('Applying ball material…', '#2288cc');
       ballMesh.material = ballMaterial;
       ballMesh.parent = boardPivot;
+      debugPositionLog('[SpaceBall] Ball mesh created at:', ballMesh.position);
       setStatus('Ball ready ✔', '#118833');
       return {
         state: 'init',
@@ -477,37 +521,35 @@ function degToRad(degrees) {
         console.warn('[SpaceBall] ⚠ Physics engine not ready, skipping score board.');
         return;
       }
-      const boardWidth = geometry.railTopSpread * 2.2; // widen board to match sketch silhouette
-      const boardHeight = geometry.pocketRadius * 8.0; // elongated landing area for the planets row
-      const boardThickness = geometry.pocketRadius * 3.0; // modest depth for a wooden plank
-
       // Compute pocket layout and centre the board around it
       const pockets = pocketLayout;
       const pocketCount = pockets.length;
       const yMin = pockets[pocketCount - 1].y - geometry.pocketRadius;
       const yMax = pockets[0].y + geometry.pocketRadius;
       const boardCenterY = (yMin + yMax) / 2;
-      // Align board top surface with the rod ends (below, not behind)
-      const boardCenterZ = -geometry.railDropLength - boardThickness / 2;
 
       // Wooden plate
-      const board = MeshBuilder.CreateBox(
-        'scoreBoard',
-        {
-          width: boardWidth,
-          height: boardHeight,
-          depth: boardThickness,
-        },
-        scene
-      );
-      const boardMat = new StandardMaterial('scoreBoardMat', scene);
-      boardMat.diffuseColor = new Color3(0.3, 0.15, 0.05); // wood colour
-      board.material = boardMat;
-      board.position.set(geometry.centerX, boardCenterY, boardCenterZ);
-      board.parent = boardPivot;
+        const board = MeshBuilder.CreateBox(
+          'scoreBoard',
+          {
+            width: geometry.boardWidth,
+            height: geometry.boardHeight,
+            depth: geometry.boardThickness,
+          },
+          scene
+        );
+        const boardMat = new StandardMaterial('scoreBoardMat', scene);
+        boardMat.diffuseColor = new Color3(0.3, 0.15, 0.05); // wood colour
+        board.material = boardMat;
+        board.position.set(geometry.centerX, boardCenterY, geometry.boardOffsetZ);
+        board.parent = boardPivot;
+        debugPositionLog('[SpaceBall] Board centre:', board.position);
 
-      // Static physics for the plate
-      const boardAgg = new PhysicsAggregate(
+        const boardThickness = geometry.boardThickness;
+        const boardCenterZ = geometry.boardOffsetZ;
+
+        // Static physics for the plate
+        const boardAgg = new PhysicsAggregate(
         board,
         PhysicsShapeType.BOX,
         {
@@ -571,7 +613,7 @@ function degToRad(degrees) {
 
     const supportSpacing = geometry.pocketRadius * 1.6;
     const supportYOffsets = [-supportSpacing, supportSpacing];
-    const supportZCenter = geometry.dropStartZ - geometry.railDropLength / 2;
+    const supportZCenter = geometry.supportDropZ;
     let railSupports = { left: [], right: [] };
 
     function positionSupports() {
@@ -595,6 +637,7 @@ function degToRad(degrees) {
           support.position.x = railX;
           support.position.y = boardCenterY + offset;
           support.position.z = supportZCenter;
+          debugPositionLog(`[SpaceBall] Support ${side} #${index} at:`, support.position);
           const aggregate = support.physicsAggregate;
           if (aggregate?.body) {
             const { position, rotation } = getWorldTransform(support);
@@ -611,7 +654,7 @@ function degToRad(degrees) {
         return railSupports;
       }
       const supportsBySide = { left: [], right: [] };
-      const diameter = geometry.railRadius * 1.2;
+      const diameter = geometry.supportRadius * 2;
       const height = geometry.railDropLength;
 
       ['left', 'right'].forEach((side) => {
@@ -624,6 +667,7 @@ function degToRad(degrees) {
           support.rotation.x = Math.PI / 2;
           support.material = railMaterial;
           support.parent = boardPivot;
+          debugPositionLog(`[SpaceBall] Created support ${side} #${index} (y offset ${offset.toFixed(3)})`);
           const supportAggregate = new PhysicsAggregate(
             support,
             PhysicsShapeType.CYLINDER,
@@ -747,7 +791,11 @@ function degToRad(degrees) {
 
       ball.mesh.position.x = xPos;
       ball.mesh.position.y = yPos + geometry.ballRadius;
-      ball.mesh.position.z = geometry.dropStartZ + geometry.ballRadius;
+      const zPos = geometry.ballStartZ + geometry.ballRadius;
+      ball.mesh.position.z = zPos;
+      if (clampedProgress === 0) {
+        debugPositionLog('[SpaceBall] Ball start:', ball.mesh.position);
+      }
       return { xPos, yPos };
     }
 
@@ -912,6 +960,7 @@ function degToRad(degrees) {
       physicsState.lastBallY = ball.mesh.position.y;
       physicsState.dropTriggered = false;
       physicsState.dropSeparation = 0;
+      debugPositionLog('[SpaceBall] Ball reset at:', ball.mesh.position, 'target x:', xPos);
 
       if (physicsState.ballAggregate) {
         const body = physicsState.ballAggregate.body;
@@ -1132,4 +1181,6 @@ function degToRad(degrees) {
     logLine(`Bootstrap error stack: ${err && err.stack ? err.stack : '(no stack)'}`);
     console.error(err);
   }
-})();
+}
+
+bootstrap();
