@@ -452,8 +452,6 @@ function degToRad(degrees) {
       createRails
     ));
 
-    await step('Create supports', createSupports);
-
     async function createBall() {
       setStatus('Creating ball mesh…', '#2277cc');
       const ballMesh = MeshBuilder.CreateSphere(
@@ -471,8 +469,7 @@ function degToRad(degrees) {
         mesh: ballMesh,
       };
     }
-
-    const ball = await step('Create ball', createBall);
+    let ball;
 
     async function createScoreBoard() {
       setStatus('Creating score board…', '#2277cc');
@@ -598,11 +595,21 @@ function degToRad(degrees) {
           support.position.x = railX;
           support.position.y = boardCenterY + offset;
           support.position.z = supportZCenter;
+          const aggregate = support.physicsAggregate;
+          if (aggregate?.body) {
+            const { position, rotation } = getWorldTransform(support);
+            aggregate.body.setTargetTransform?.(position, rotation, 0);
+            aggregate.body.setTransformation?.(position, rotation);
+          }
         });
       });
     }
 
     async function createSupports() {
+      if (!scene.getPhysicsEngine()) {
+        console.warn('[SpaceBall] ⚠ Physics engine not ready, skipping supports.');
+        return railSupports;
+      }
       const supportsBySide = { left: [], right: [] };
       const diameter = geometry.railRadius * 1.2;
       const height = geometry.railDropLength;
@@ -617,6 +624,18 @@ function degToRad(degrees) {
           support.rotation.x = Math.PI / 2;
           support.material = railMaterial;
           support.parent = boardPivot;
+          const supportAggregate = new PhysicsAggregate(
+            support,
+            PhysicsShapeType.CYLINDER,
+            {
+              mass: 0,
+              restitution: 0.05,
+              friction: 0.7,
+            },
+            scene
+          );
+          supportAggregate.body.setMotionType?.(PhysicsMotionType.STATIC);
+          support.physicsAggregate = supportAggregate;
           supportsBySide[side].push(support);
         });
       });
@@ -1059,6 +1078,8 @@ function degToRad(degrees) {
       scene.render();
     }
 
+    ball = await step('Create ball', createBall);
+
     await step('Prime scene', async () => {
       resetBall();
       updateRailMeshes();
@@ -1066,13 +1087,13 @@ function degToRad(degrees) {
       alignColliderToRail(rightRailCollider, 'right');
     });
 
-    // enable physics first
     await step('Enable physics', async () => {
       await initialisePhysics();
     });
 
-    // now create the score board, physics engine exists
     await step('Create score board', createScoreBoard);
+
+    await step('Create supports', createSupports);
 
     await step('Reset ball', async () => {
       resetBall();
