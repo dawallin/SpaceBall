@@ -239,6 +239,7 @@ async function bootstrap() {
     const controlModule = await step('Load control-logic module', async () => import('./control-logic.js'));
     ({ clamp, normalizedToOffset, sliderValueToTilt, getRailX, createPocketLayouts } = controlModule);
     let pocketLayout = createPocketLayouts(geometry);
+    let ball;
 
     await step('Initialize UI controls', async () => {
       if (!tiltSlider || !tiltReadout) {
@@ -554,7 +555,6 @@ async function bootstrap() {
         mesh: ballMesh,
       };
     }
-    let ball;
 
     async function createScoreBoard() {
       setStatus('Creating score board…', '#2277cc');
@@ -846,7 +846,7 @@ async function bootstrap() {
     };
 
     function getCurrentBallProgress() {
-      if (!ball?.mesh) {
+      if (!ball || !ball.mesh) {
         return 0;
       }
       const position = ball.mesh.getAbsolutePosition();
