@@ -220,27 +220,52 @@ async function bootstrap() {
     const controlModule = await step('Load control-logic module', async () => import('./control-logic.js'));
     ({ clamp, normalizedToOffset, sliderValueToTilt, getRailX, createPocketLayouts } = controlModule);
     let pocketLayout = createPocketLayouts(geometry);
+    const sceneManager = {
+      updateGeometry: () => {
+        applyRodAdjustables();
+      },
+    };
 
     await step('Initialize UI controls', async () => {
       if (!tiltSlider || !tiltReadout) {
         throw new Error('Tilt controls missing');
       }
-      if (!rodHeightSlider || !rodHeightReadout || !rodSpacingSlider || !rodSpacingReadout) {
-        throw new Error('Rod geometry sliders missing');
+
+      // Rod geometry controls are optional — use defaults if not found
+      const hasRodSliders =
+        rodHeightSlider && rodHeightReadout && rodSpacingSlider && rodSpacingReadout;
+
+      if (hasRodSliders) {
+        const hCm = (geometry.adjustable.h / CM).toFixed(1);
+        rodHeightSlider.value = hCm;
+        rodHeightReadout.textContent = `${hCm} cm`;
+
+        const dCm = (geometry.adjustable.d / CM).toFixed(1);
+        rodSpacingSlider.value = dCm;
+        rodSpacingReadout.textContent = `${dCm} cm`;
+
+        const updateGeometryLive = () => {
+          sceneManager.updateGeometry(geometry);
+        };
+
+        rodHeightSlider.addEventListener('input', () => {
+          const value = Number(rodHeightSlider.value);
+          geometry.adjustable.h = value * CM;
+          rodHeightReadout.textContent = `${value.toFixed(1)} cm`;
+          updateGeometryLive();
+        });
+
+        rodSpacingSlider.addEventListener('input', () => {
+          const value = Number(rodSpacingSlider.value);
+          geometry.adjustable.d = value * CM;
+          rodSpacingReadout.textContent = `${value.toFixed(1)} cm`;
+          updateGeometryLive();
+        });
+      } else {
+        console.warn('[SpaceBall] Rod geometry sliders missing — using defaults');
+        geometry.adjustable.h ??= 0.03; // 3 cm tilt
+        geometry.adjustable.d ??= 0.04; // 4 cm spacing
       }
-
-      state.tilt = sliderValueToTilt(tiltSlider.value ?? 0, tiltBounds);
-      tiltReadout.textContent = `${Math.round(state.tilt)}°`;
-      tiltSlider.setAttribute('aria-valuenow', tiltSlider.value);
-
-      const heightCm = (geometry.adjustable.h / CM).toFixed(1);
-      const spacingCm = (geometry.adjustable.d / CM).toFixed(1);
-      rodHeightSlider.value = heightCm;
-      rodSpacingSlider.value = spacingCm;
-      rodHeightSlider.setAttribute('aria-valuenow', heightCm);
-      rodSpacingSlider.setAttribute('aria-valuenow', spacingCm);
-      rodHeightReadout.textContent = `${heightCm} cm`;
-      rodSpacingReadout.textContent = `${spacingCm} cm`;
     });
 
     await step('Verify Havok loader', async () => {
