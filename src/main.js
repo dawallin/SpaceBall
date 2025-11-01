@@ -220,11 +220,6 @@ async function bootstrap() {
     const controlModule = await step('Load control-logic module', async () => import('./control-logic.js'));
     ({ clamp, normalizedToOffset, sliderValueToTilt, getRailX, createPocketLayouts } = controlModule);
     let pocketLayout = createPocketLayouts(geometry);
-    const sceneManager = {
-      updateGeometry: () => {
-        applyRodAdjustables();
-      },
-    };
 
     await step('Initialize UI controls', async () => {
       if (!tiltSlider || !tiltReadout) {
@@ -237,48 +232,33 @@ async function bootstrap() {
       tiltSlider.setAttribute('aria-valuenow', tiltSlider.value);
 
       // OPTIONAL rod sliders
-      const hasRodSliders =
-        !!rodHeightSlider && !!rodHeightReadout &&
-        !!rodSpacingSlider && !!rodSpacingReadout;
+      const hasRodSliders = !!rodHeightSlider && !!rodSpacingSlider;
+      const heightCm = (geometry.adjustable.h / CM).toFixed(1);
+      const spacingCm = (geometry.adjustable.d / CM).toFixed(1);
 
       if (hasRodSliders) {
-        const hCm = (geometry.adjustable.h / CM).toFixed(1);
-        const dCm = (geometry.adjustable.d / CM).toFixed(1);
+        state.rodHeight = geometry.adjustable.h;
+        state.rodSpacing = geometry.adjustable.d;
 
-        rodHeightSlider.value = hCm;
-        rodHeightReadout.textContent = `${hCm} cm`;
-        rodHeightSlider.setAttribute('aria-valuenow', hCm);
+        rodHeightSlider.value = heightCm;
+        rodHeightSlider.setAttribute('aria-valuenow', heightCm);
+        if (rodHeightReadout) {
+          rodHeightReadout.textContent = `${heightCm} cm`;
+        }
 
-        rodSpacingSlider.value = dCm;
-        rodSpacingReadout.textContent = `${dCm} cm`;
-        rodSpacingSlider.setAttribute('aria-valuenow', dCm);
-
-        const updateGeometryLive = () => {
-          // hook this into your existing re-application logic
-          // (minimal, non-destructive geometry refresh)
-          if (typeof sceneManager?.updateGeometry === 'function') {
-            sceneManager.updateGeometry(geometry);
-          }
-        };
-
-        rodHeightSlider.addEventListener('input', () => {
-          const value = Number(rodHeightSlider.value);
-          geometry.adjustable.h = value * CM;
-          rodHeightReadout.textContent = `${value.toFixed(1)} cm`;
-          updateGeometryLive();
-        });
-
-        rodSpacingSlider.addEventListener('input', () => {
-          const value = Number(rodSpacingSlider.value);
-          geometry.adjustable.d = value * CM;
-          rodSpacingReadout.textContent = `${value.toFixed(1)} cm`;
-          updateGeometryLive();
-        });
+        rodSpacingSlider.value = spacingCm;
+        rodSpacingSlider.setAttribute('aria-valuenow', spacingCm);
+        if (rodSpacingReadout) {
+          rodSpacingReadout.textContent = `${spacingCm} cm`;
+        }
       } else {
         // Safe defaults so the game always starts without these controls
-        console.warn('[SpaceBall] Rod geometry sliders missing — using defaults');
-        if (geometry.adjustable.h == null) geometry.adjustable.h = 0.03; // 3 cm
-        if (geometry.adjustable.d == null) geometry.adjustable.d = 0.04; // 4 cm
+        const defaultHeight = 3 * CM;
+        const defaultSpacing = 4 * CM;
+        state.rodHeight = defaultHeight;
+        state.rodSpacing = defaultSpacing;
+        console.warn('[SpaceBall] Using default geometry — no sliders found');
+        applyRodAdjustables();
       }
     });
 
@@ -998,9 +978,6 @@ async function bootstrap() {
     }
 
     function updateRodHeight(value) {
-      if (!rodHeightSlider) {
-        return;
-      }
       const minCm = H_RANGE.min / CM;
       const maxCm = H_RANGE.max / CM;
       const cmValue = clamp(Number(value) || 0, minCm, maxCm);
@@ -1009,9 +986,6 @@ async function bootstrap() {
     }
 
     function updateRodSpacing(value) {
-      if (!rodSpacingSlider) {
-        return;
-      }
       const minCm = D_RANGE.min / CM;
       const maxCm = D_RANGE.max / CM;
       const cmValue = clamp(Number(value) || 0, minCm, maxCm);
