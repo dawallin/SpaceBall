@@ -330,8 +330,6 @@ export function createDebugOverlayData(model) {
 }
 
 export function getBoardTopWall(model) {
-  // Top wall: single vertical segment at the back center
-  // Axis convention: x = left–right, y = front–back, z = height
   const y = -model.board.depth / 2;
   return {
     start: { x: 0, y, z: model.board.floorZ },

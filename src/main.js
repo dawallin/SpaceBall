@@ -185,6 +185,27 @@ const tiltBounds = {
 // ─────────────────────────────
 const geometry = createGeometryModel();
 
+function applyGeometryUpdate() {
+  const manager =
+    typeof sceneManager !== 'undefined' ? sceneManager : globalThis.sceneManager;
+  if (manager && typeof manager.updateGeometry === 'function') {
+    manager.updateGeometry(geometry);
+    return;
+  }
+
+  if (typeof buildGeometry === 'function') {
+    buildGeometry(geometry);
+    return;
+  }
+
+  if (typeof globalThis.buildGeometry === 'function') {
+    globalThis.buildGeometry(geometry);
+    return;
+  }
+
+  console.warn('No geometry update function available');
+}
+
 const state = {
   score: 0,
   tilt: 0,
@@ -192,8 +213,6 @@ const state = {
   rightAngle: geometry.angles.rightDeg,
   leftPointer: null,
   rightPointer: null,
-  rodHeight: geometry.adjustable.h,
-  rodSpacing: geometry.adjustable.d,
 };
 
 function degToRad(degrees) {
@@ -232,33 +251,40 @@ async function bootstrap() {
       tiltSlider.setAttribute('aria-valuenow', tiltSlider.value);
 
       // OPTIONAL rod sliders
-      const hasRodSliders = !!rodHeightSlider && !!rodSpacingSlider;
+      const hasRodSliders =
+        rodHeightSlider &&
+        rodHeightReadout &&
+        rodSpacingSlider &&
+        rodSpacingReadout;
       const heightCm = (geometry.adjustable.h / CM).toFixed(1);
       const spacingCm = (geometry.adjustable.d / CM).toFixed(1);
 
       if (hasRodSliders) {
-        state.rodHeight = geometry.adjustable.h;
-        state.rodSpacing = geometry.adjustable.d;
-
         rodHeightSlider.value = heightCm;
         rodHeightSlider.setAttribute('aria-valuenow', heightCm);
-        if (rodHeightReadout) {
-          rodHeightReadout.textContent = `${heightCm} cm`;
-        }
+        rodHeightReadout.textContent = `${heightCm} cm`;
 
         rodSpacingSlider.value = spacingCm;
         rodSpacingSlider.setAttribute('aria-valuenow', spacingCm);
-        if (rodSpacingReadout) {
-          rodSpacingReadout.textContent = `${spacingCm} cm`;
-        }
+        rodSpacingReadout.textContent = `${spacingCm} cm`;
+
+        const handleHeightInput = (event) => {
+          updateRodHeight(event.target.value);
+        };
+        const handleSpacingInput = (event) => {
+          updateRodSpacing(event.target.value);
+        };
+
+        rodHeightSlider.addEventListener('input', handleHeightInput);
+        rodHeightSlider.addEventListener('change', handleHeightInput);
+        rodSpacingSlider.addEventListener('input', handleSpacingInput);
+        rodSpacingSlider.addEventListener('change', handleSpacingInput);
       } else {
-        // Safe defaults so the game always starts without these controls
-        const defaultHeight = 3 * CM;
-        const defaultSpacing = 4 * CM;
-        state.rodHeight = defaultHeight;
-        state.rodSpacing = defaultSpacing;
-        console.warn('[SpaceBall] Using default geometry — no sliders found');
+        console.warn('[SpaceBall] Rod sliders missing — using defaults');
+        geometry.adjustable.h = 0.03;
+        geometry.adjustable.d = 0.04;
         applyRodAdjustables();
+        applyGeometryUpdate();
       }
     });
 
@@ -901,12 +927,10 @@ async function bootstrap() {
 
     function applyRodAdjustables() {
       const progress = getCurrentBallProgress();
-      geometry.updateAdjustables({ h: state.rodHeight, d: state.rodSpacing });
+      geometry.updateAdjustables({ h: geometry.adjustable.h, d: geometry.adjustable.d });
       geometry.updateAngles({ thetaL: state.leftAngle, thetaR: state.rightAngle });
       state.leftAngle = geometry.angles.leftDeg;
       state.rightAngle = geometry.angles.rightDeg;
-      state.rodHeight = geometry.adjustable.h;
-      state.rodSpacing = geometry.adjustable.d;
       pocketLayout = createPocketLayouts(geometry);
       if (leftRail && rightRail) {
         updateRailMeshes();
@@ -981,7 +1005,7 @@ async function bootstrap() {
       const minCm = H_RANGE.min / CM;
       const maxCm = H_RANGE.max / CM;
       const cmValue = clamp(Number(value) || 0, minCm, maxCm);
-      state.rodHeight = cmValue * CM;
+      geometry.adjustable.h = cmValue * CM;
       applyRodAdjustables();
     }
 
@@ -989,7 +1013,7 @@ async function bootstrap() {
       const minCm = D_RANGE.min / CM;
       const maxCm = D_RANGE.max / CM;
       const cmValue = clamp(Number(value) || 0, minCm, maxCm);
-      state.rodSpacing = cmValue * CM;
+      geometry.adjustable.d = cmValue * CM;
       applyRodAdjustables();
     }
 
@@ -1086,22 +1110,6 @@ async function bootstrap() {
       tiltSlider.addEventListener('change', (event) => {
         updateTilt(event.target.value);
       });
-      if (rodHeightSlider) {
-        rodHeightSlider.addEventListener('input', (event) => {
-          updateRodHeight(event.target.value);
-        });
-        rodHeightSlider.addEventListener('change', (event) => {
-          updateRodHeight(event.target.value);
-        });
-      }
-      if (rodSpacingSlider) {
-        rodSpacingSlider.addEventListener('input', (event) => {
-          updateRodSpacing(event.target.value);
-        });
-        rodSpacingSlider.addEventListener('change', (event) => {
-          updateRodSpacing(event.target.value);
-        });
-      }
       updateTilt(tiltSlider.value);
       globalThis.__spaceBall = debugInterface;
     });
