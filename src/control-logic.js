@@ -1,6 +1,6 @@
-export function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
+import { clamp, createScoringTargets, getRailX as modelRailX } from './geometry.js';
+
+export { clamp };
 
 export function normalizedToOffset(normalized, railTravel) {
   const clamped = clamp(Number(normalized) || 0, 0, 1);
@@ -17,38 +17,23 @@ export function tiltToAcceleration(tiltDeg, gravityBase = 40) {
 }
 
 export function getRailX(geometry, state, yNorm, side) {
-  const {
-    centerX,
-    railTopSpread,
-    railBottomSpread,
-    railTravel,
-  } = geometry;
-  const { leftOffset = 0, rightOffset = 0 } = state;
-  const progress = clamp(Number(yNorm) || 0, 0, 1);
-  const leftControl = clamp(leftOffset, -railTravel, railTravel);
-  const rightControl = clamp(rightOffset, -railTravel, railTravel);
-  const leftTop = centerX - railTopSpread / 2 + leftControl * 0.18;
-  const rightTop = centerX + railTopSpread / 2 + rightControl * 0.18;
-  const leftBottom = centerX - railBottomSpread / 2 + leftControl;
-  const rightBottom = centerX + railBottomSpread / 2 + rightControl;
-
-  if (side === "left") {
-    return leftTop + (leftBottom - leftTop) * progress;
-  }
-  return rightTop + (rightBottom - rightTop) * progress;
+  return modelRailX(geometry, state, yNorm, side);
 }
 
 export function createPocketLayouts(geometry) {
-  const { centerX, bottomY, pocketRadius } = geometry;
-  const pocketNames = ["Mercury", "Earth", "Mars", "Jupiter", "Saturn", "Pluto"];
-  const spacing = pocketRadius * 1.2;
-  const startY = bottomY - pocketRadius;
+  const radius = geometry.pocketRadius ?? 0.018;
+  const targets = geometry.scoringTargets?.length
+    ? geometry.scoringTargets
+    : createScoringTargets(geometry.board);
 
-  return pocketNames.map((name, index) => ({
-    name,
-    radius: name === "Pluto" ? pocketRadius * 1.35 : pocketRadius,
-    y: startY - spacing * index,
-    highlight: name === "Pluto",
-    x: centerX,
+  return targets.map((target) => ({
+    name: target.label,
+    label: target.label,
+    score: target.score,
+    radius: target.label === 'Pluto' ? radius * 1.3 : radius,
+    x: target.center.x,
+    y: target.center.y,
+    z: target.center.z,
+    highlight: target.label === 'Pluto',
   }));
 }

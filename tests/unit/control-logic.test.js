@@ -7,20 +7,9 @@ import {
   getRailX,
   createPocketLayouts,
 } from '../../src/control-logic.js';
+import { createGeometryModel } from '../../src/geometry.js';
 
-const geometry = {
-  centerX: 180,
-  railTopSpread: 34,
-  railBottomSpread: 180,
-  railTravel: 90,
-  bottomY: 524,
-  pocketRadius: 22,
-};
-
-const baseState = {
-  leftOffset: 0,
-  rightOffset: 0,
-};
+const geometry = createGeometryModel();
 
 test('normalized touch offsets clamp to rail travel', () => {
   expect(normalizedToOffset(0, geometry.railTravel)).toBe(-geometry.railTravel);
@@ -42,33 +31,32 @@ test('tilt acceleration scales with the tilt angle', () => {
   expect(steep).toBeGreaterThan(gentle);
 });
 
-test('rail positions respect independent offsets', () => {
-  const state = { ...baseState, leftOffset: geometry.railTravel, rightOffset: -geometry.railTravel };
-  const leftBottom = getRailX(geometry, state, 1, 'left');
-  const rightBottom = getRailX(geometry, state, 1, 'right');
-  expect(leftBottom).toBeGreaterThan(geometry.centerX - geometry.railBottomSpread / 2);
-  expect(rightBottom).toBeLessThan(geometry.centerX + geometry.railBottomSpread / 2);
+test('rod angles pivot the rails symmetrically', () => {
+  geometry.updateAdjustables({ h: geometry.adjustable.h, d: geometry.adjustable.d });
+  geometry.updateAngles({ thetaL: geometry.rodAngleRange, thetaR: -geometry.rodAngleRange });
+  const leftFront = getRailX(geometry, {}, 0, 'left');
+  const rightFront = getRailX(geometry, {}, 0, 'right');
+  expect(leftFront).toBeLessThan(rightFront);
 
-  const clampedLeft = getRailX(
-    geometry,
-    { ...state, leftOffset: geometry.railTravel * 2 },
-    1,
-    'left'
-  );
-  expect(clampedLeft).toBe(leftBottom);
+  const leftBack = getRailX(geometry, {}, 1, 'left');
+  const rightBack = getRailX(geometry, {}, 1, 'right');
+  expect(leftBack).toBeLessThan(rightBack);
+
+  geometry.updateAngles({ thetaL: -geometry.rodAngleRange, thetaR: geometry.rodAngleRange });
+  const newLeftFront = getRailX(geometry, {}, 0, 'left');
+  const newRightFront = getRailX(geometry, {}, 0, 'right');
+  expect(newLeftFront).toBeLessThan(newRightFront);
 });
 
-test('pocket layouts stay centred and ordered', () => {
-  const pockets = createPocketLayouts({ ...geometry, bottomY: 500 });
-  expect(pockets).toHaveLength(6);
-  pockets.forEach((pocket) => {
-    expect(pocket.x).toBe(geometry.centerX);
-  });
+test('pocket layouts follow the planetary ordering', () => {
+  const pockets = createPocketLayouts(geometry);
+  expect(pockets).toHaveLength(7);
   const names = pockets.map((pocket) => pocket.name);
-  expect(names).toEqual(['Mercury', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Pluto']);
-  for (let i = 1; i < pockets.length; i += 1) {
-    expect(pockets[i].y).toBeLessThan(pockets[i - 1].y);
-  }
+  expect(names).toEqual(['Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Pluto']);
+  const laneX = pockets.slice(0, -1).map((pocket) => pocket.x);
+  const sortedX = [...laneX].sort((a, b) => a - b);
+  expect(laneX).toEqual(sortedX);
+  expect(pockets[pockets.length - 1].x).toBeCloseTo(0, 5);
   const highlighted = pockets.filter((pocket) => pocket.highlight === true);
   expect(highlighted).toHaveLength(1);
   expect(highlighted[0].name).toBe('Pluto');

@@ -1,3 +1,11 @@
+import {
+  CM,
+  D_RANGE,
+  H_RANGE,
+  createDebugOverlayData,
+  createGeometryModel,
+} from './geometry.js';
+
 // === Early debug helpers ===
 const statusEl = document.getElementById('status-bar');
 let debugPanel;
@@ -162,6 +170,11 @@ const cameraAlphaReadout = document.getElementById('cameraAlphaReadout');
 const cameraBetaReadout = document.getElementById('cameraBetaReadout');
 const cameraZoomReadout = document.getElementById('cameraZoomReadout');
 
+const rodHeightSlider = document.getElementById('rodHeightSlider');
+const rodHeightReadout = document.getElementById('rodHeightReadout');
+const rodSpacingSlider = document.getElementById('rodSpacingSlider');
+const rodSpacingReadout = document.getElementById('rodSpacingReadout');
+
 const tiltBounds = {
   min: 8,
   max: 28,
@@ -170,49 +183,17 @@ const tiltBounds = {
 // ─────────────────────────────
 // 🧩 1. GEOMETRY CONFIGURATION
 // ─────────────────────────────
-const geometry = {
-  // Rod layout
-  centerX: 0, // Central axis for all meshes (x-axis)
-  topY: 0.28, // Rail entry height (y-axis, near player)
-  bottomY: -0.62, // Rail exit height (y-axis, far end)
-  railLengthY: 0.9, // Distance between topY and bottomY along the y-axis
-  railTopSpread: 0.032, // Distance between rails at the top (x-axis)
-  railBottomSpread: 0.082, // Distance between rails at the bottom (x-axis)
-  railTravel: 0.028, // Maximum offset applied by paddles (x-axis)
-  railRadius: 0.006, // Cylinder radius for rail meshes
-  railDropLength: 0.22, // Vertical drop distance after the rail run (z-axis)
-  dropStartZ: 0, // Z position where the drop begins
-  dropFloorZ: -0.32, // Floor of the drop zone (z-axis)
-  dropPlaneZ: -0.004, // Invisible plane to catch the ball (z-axis)
-
-  // Board dimensions
-  boardWidth: 0.032 * 2.2, // Width (x-axis) aligned with rail spread
-  boardHeight: 0.014 * 8.0, // Height (y-axis) covering pocket layout
-  boardThickness: 0.014 * 3.0, // Depth (z-axis) for the wooden plank
-  boardOffsetZ: -0.22 - (0.014 * 3.0) / 2, // Board centre (below rails)
-
-  // Ball
-  ballRadius: 0.019, // Ball size (sphere radius)
-  ballStartZ: 0, // Starting z position resting on rails
-
-  // Supports
-  supportRadius: 0.006 * 0.6, // Cylinder radius for rail supports
-  supportDropZ: 0 - 0.22 / 2, // Support centre along the drop (z-axis)
-
-  // Pocket layout
-  pocketRadius: 0.014, // Landing pocket radius (y-axis alignment helper)
-
-  // Physics reference
-  gravityBase: 9.81, // Base gravity used for calculations
-};
+const geometry = createGeometryModel();
 
 const state = {
   score: 0,
   tilt: 0,
-  leftOffset: 0,
-  rightOffset: 0,
+  leftAngle: geometry.angles.leftDeg,
+  rightAngle: geometry.angles.rightDeg,
   leftPointer: null,
   rightPointer: null,
+  rodHeight: geometry.adjustable.h,
+  rodSpacing: geometry.adjustable.d,
 };
 
 function degToRad(degrees) {
@@ -238,15 +219,28 @@ async function bootstrap() {
 
     const controlModule = await step('Load control-logic module', async () => import('./control-logic.js'));
     ({ clamp, normalizedToOffset, sliderValueToTilt, getRailX, createPocketLayouts } = controlModule);
-    const pocketLayout = createPocketLayouts(geometry);
+    let pocketLayout = createPocketLayouts(geometry);
 
     await step('Initialize UI controls', async () => {
       if (!tiltSlider || !tiltReadout) {
         throw new Error('Tilt controls missing');
       }
+      if (!rodHeightSlider || !rodHeightReadout || !rodSpacingSlider || !rodSpacingReadout) {
+        throw new Error('Rod geometry sliders missing');
+      }
+
       state.tilt = sliderValueToTilt(tiltSlider.value ?? 0, tiltBounds);
       tiltReadout.textContent = `${Math.round(state.tilt)}°`;
       tiltSlider.setAttribute('aria-valuenow', tiltSlider.value);
+
+      const heightCm = (geometry.adjustable.h / CM).toFixed(1);
+      const spacingCm = (geometry.adjustable.d / CM).toFixed(1);
+      rodHeightSlider.value = heightCm;
+      rodSpacingSlider.value = spacingCm;
+      rodHeightSlider.setAttribute('aria-valuenow', heightCm);
+      rodSpacingSlider.setAttribute('aria-valuenow', spacingCm);
+      rodHeightReadout.textContent = `${heightCm} cm`;
+      rodSpacingReadout.textContent = `${spacingCm} cm`;
     });
 
     await step('Verify Havok loader', async () => {
@@ -428,12 +422,12 @@ async function bootstrap() {
     // ─────────────────────────────
 
     function buildRailPath(side) {
-      const topX = getRailX(geometry, state, 0, side);
-      const bottomX = getRailX(geometry, state, 1, side);
-      const topPoint = new Vector3(topX, geometry.topY, geometry.dropStartZ);
-      const bottomPoint = new Vector3(bottomX, geometry.bottomY, geometry.dropStartZ);
-      const dropPoint = new Vector3(bottomX, geometry.bottomY, geometry.dropStartZ - geometry.railDropLength);
-      return [topPoint, bottomPoint, dropPoint];
+      const front = geometry.getRodPoint(side, 0);
+      const back = geometry.getRodPoint(side, 1);
+      const frontVec = new Vector3(front.x, front.y, front.z);
+      const backVec = new Vector3(back.x, back.y, back.z);
+      const dropVec = new Vector3(back.x, back.y, back.z - geometry.railDropLength);
+      return [frontVec, backVec, dropVec];
     }
 
     async function createRails() {
@@ -494,6 +488,8 @@ async function bootstrap() {
       'Create rails',
       createRails
     ));
+    updateDebugOverlayMeshes();
+    applyRodAdjustables();
 
     async function createBall() {
       setStatus('Creating ball mesh…', '#2277cc');
@@ -717,10 +713,10 @@ async function bootstrap() {
     updateBoardTilt();
 
     function alignColliderToRail(collider, side) {
-      const topX = getRailX(geometry, state, 0, side);
-      const bottomX = getRailX(geometry, state, 1, side);
-      const top = new Vector3(topX, geometry.topY, geometry.dropStartZ);
-      const bottom = new Vector3(bottomX, geometry.bottomY, geometry.dropStartZ);
+      const front = geometry.getRodPoint(side, 0);
+      const back = geometry.getRodPoint(side, 1);
+      const top = new Vector3(front.x, front.y, front.z);
+      const bottom = new Vector3(back.x, back.y, back.z);
       const center = top.add(bottom).scale(0.5);
       const direction = bottom.subtract(top);
       const length = direction.length();
@@ -784,41 +780,165 @@ async function bootstrap() {
 
     function positionBallOnRails(progress = 0) {
       const clampedProgress = clamp(progress, 0, 1);
-      const yPos = geometry.topY + (geometry.bottomY - geometry.topY) * clampedProgress;
-      const leftX = getRailX(geometry, state, clampedProgress, 'left');
-      const rightX = getRailX(geometry, state, clampedProgress, 'right');
-      const xPos = (leftX + rightX) / 2;
+      const leftPoint = geometry.getRodPoint('left', clampedProgress);
+      const rightPoint = geometry.getRodPoint('right', clampedProgress);
+      const xPos = (leftPoint.x + rightPoint.x) / 2;
+      const yPos = (leftPoint.y + rightPoint.y) / 2;
+      const zRail = (leftPoint.z + rightPoint.z) / 2;
 
       ball.mesh.position.x = xPos;
-      ball.mesh.position.y = yPos + geometry.ballRadius;
-      const zPos = geometry.ballStartZ + geometry.ballRadius;
-      ball.mesh.position.z = zPos;
+      ball.mesh.position.y = yPos;
+      ball.mesh.position.z = zRail + geometry.ballRadius;
       if (clampedProgress === 0) {
         debugPositionLog('[SpaceBall] Ball start:', ball.mesh.position);
       }
-      return { xPos, yPos };
+      return { xPos, yPos, zRail };
+    }
+
+    const overlayMeshes = {
+      lines: [],
+      points: [],
+    };
+
+    function getCurrentBallProgress() {
+      if (!ball?.mesh) {
+        return 0;
+      }
+      const position = ball.mesh.getAbsolutePosition();
+      const frontY = geometry.rods.left.front.y;
+      const backY = geometry.rods.left.back.y;
+      const span = frontY - backY || 1;
+      const along = frontY - position.y;
+      return clamp(along / span, 0, 1);
+    }
+
+    function updateDebugOverlayMeshes() {
+      if (!DEBUG_MODE) {
+        return;
+      }
+      const data = createDebugOverlayData(geometry);
+      data.lines.forEach((line, index) => {
+        const points = line.points.map((p) => new Vector3(p.x, p.y, p.z));
+        if (overlayMeshes.lines[index]) {
+          overlayMeshes.lines[index] = MeshBuilder.CreateLines(
+            `geometryDebugLine_${index}`,
+            { points, updatable: true, instance: overlayMeshes.lines[index] },
+            scene
+          );
+          overlayMeshes.lines[index].isVisible = true;
+        } else {
+          const mesh = MeshBuilder.CreateLines(
+            `geometryDebugLine_${index}`,
+            { points, updatable: true },
+            scene
+          );
+          mesh.color = new Color3(0.8, 0.95, 0.6);
+          mesh.parent = boardPivot;
+          overlayMeshes.lines[index] = mesh;
+        }
+      });
+      // Hide extra meshes if line count shrinks
+      overlayMeshes.lines.slice(data.lines.length).forEach((mesh) => mesh && (mesh.isVisible = false));
+
+      data.points.forEach((entry, index) => {
+        const position = entry.position;
+        const existing = overlayMeshes.points[index];
+        if (existing) {
+          existing.position.set(position.x, position.y, position.z);
+          existing.isVisible = true;
+        } else {
+          const sphere = MeshBuilder.CreateSphere(
+            `geometryDebugPoint_${index}`,
+            { diameter: geometry.ballRadius * 0.6 },
+            scene
+          );
+          const material = new StandardMaterial(`geometryDebugPointMat_${index}`, scene);
+          material.diffuseColor = new Color3(0.95, 0.45, 0.35);
+          sphere.material = material;
+          sphere.parent = boardPivot;
+          sphere.position.set(position.x, position.y, position.z);
+          overlayMeshes.points[index] = sphere;
+        }
+      });
+      overlayMeshes.points.slice(data.points.length).forEach((mesh) => mesh && (mesh.isVisible = false));
+    }
+
+    function applyRodAngles() {
+      const progress = getCurrentBallProgress();
+      geometry.updateAngles({ thetaL: state.leftAngle, thetaR: state.rightAngle });
+      state.leftAngle = geometry.angles.leftDeg;
+      state.rightAngle = geometry.angles.rightDeg;
+      if (leftRail && rightRail) {
+        updateRailMeshes();
+      }
+      if (ball) {
+        positionBallOnRails(progress);
+      }
+      if (railSupports.left.length || railSupports.right.length) {
+        positionSupports();
+      }
+      updateDebugOverlayMeshes();
+    }
+
+    function applyRodAdjustables() {
+      const progress = getCurrentBallProgress();
+      geometry.updateAdjustables({ h: state.rodHeight, d: state.rodSpacing });
+      geometry.updateAngles({ thetaL: state.leftAngle, thetaR: state.rightAngle });
+      state.leftAngle = geometry.angles.leftDeg;
+      state.rightAngle = geometry.angles.rightDeg;
+      state.rodHeight = geometry.adjustable.h;
+      state.rodSpacing = geometry.adjustable.d;
+      pocketLayout = createPocketLayouts(geometry);
+      if (leftRail && rightRail) {
+        updateRailMeshes();
+      }
+      if (ball) {
+        positionBallOnRails(progress);
+      }
+      if (railSupports.left.length || railSupports.right.length) {
+        positionSupports();
+      }
+      updateDebugOverlayMeshes();
+      const heightCm = (geometry.adjustable.h / CM).toFixed(1);
+      const spacingCm = (geometry.adjustable.d / CM).toFixed(1);
+      if (rodHeightReadout) {
+        rodHeightReadout.textContent = `${heightCm} cm`;
+      }
+      if (rodSpacingReadout) {
+        rodSpacingReadout.textContent = `${spacingCm} cm`;
+      }
+      if (rodHeightSlider) {
+        rodHeightSlider.value = heightCm;
+        rodHeightSlider.setAttribute('aria-valuenow', heightCm);
+      }
+      if (rodSpacingSlider) {
+        rodSpacingSlider.value = spacingCm;
+        rodSpacingSlider.setAttribute('aria-valuenow', spacingCm);
+      }
     }
 
     function handlePadDown(side, pointerId, normalized) {
-      const offset = normalizedToOffset(normalized, geometry.railTravel);
+      const angle = normalizedToOffset(normalized, geometry.rodAngleRange);
       if (side === 'left') {
         state.leftPointer = pointerId;
-        state.leftOffset = offset;
+        state.leftAngle = angle;
       } else {
         state.rightPointer = pointerId;
-        state.rightOffset = offset;
+        state.rightAngle = angle;
       }
+      applyRodAngles();
     }
 
     function handlePadMove(side, pointerId, normalized) {
       if (side === 'left' && state.leftPointer !== pointerId) return;
       if (side === 'right' && state.rightPointer !== pointerId) return;
-      const offset = normalizedToOffset(normalized, geometry.railTravel);
+      const angle = normalizedToOffset(normalized, geometry.rodAngleRange);
       if (side === 'left') {
-        state.leftOffset = offset;
+        state.leftAngle = angle;
       } else {
-        state.rightOffset = offset;
+        state.rightAngle = angle;
       }
+      applyRodAngles();
     }
 
     function handlePadUp(side, pointerId) {
@@ -828,6 +948,7 @@ async function bootstrap() {
       if (side === 'right' && state.rightPointer === pointerId) {
         state.rightPointer = null;
       }
+      applyRodAngles();
     }
 
     function updateTilt(value) {
@@ -835,6 +956,28 @@ async function bootstrap() {
       tiltReadout.textContent = `${Math.round(state.tilt)}°`;
       tiltSlider.setAttribute('aria-valuenow', String(value));
       updateBoardTilt();
+    }
+
+    function updateRodHeight(value) {
+      if (!rodHeightSlider) {
+        return;
+      }
+      const minCm = H_RANGE.min / CM;
+      const maxCm = H_RANGE.max / CM;
+      const cmValue = clamp(Number(value) || 0, minCm, maxCm);
+      state.rodHeight = cmValue * CM;
+      applyRodAdjustables();
+    }
+
+    function updateRodSpacing(value) {
+      if (!rodSpacingSlider) {
+        return;
+      }
+      const minCm = D_RANGE.min / CM;
+      const maxCm = D_RANGE.max / CM;
+      const cmValue = clamp(Number(value) || 0, minCm, maxCm);
+      state.rodSpacing = cmValue * CM;
+      applyRodAdjustables();
     }
 
     function normalisePointer(event, padElement) {
@@ -930,6 +1073,22 @@ async function bootstrap() {
       tiltSlider.addEventListener('change', (event) => {
         updateTilt(event.target.value);
       });
+      if (rodHeightSlider) {
+        rodHeightSlider.addEventListener('input', (event) => {
+          updateRodHeight(event.target.value);
+        });
+        rodHeightSlider.addEventListener('change', (event) => {
+          updateRodHeight(event.target.value);
+        });
+      }
+      if (rodSpacingSlider) {
+        rodSpacingSlider.addEventListener('input', (event) => {
+          updateRodSpacing(event.target.value);
+        });
+        rodSpacingSlider.addEventListener('change', (event) => {
+          updateRodSpacing(event.target.value);
+        });
+      }
       updateTilt(tiltSlider.value);
       globalThis.__spaceBall = debugInterface;
     });
@@ -1069,15 +1228,17 @@ async function bootstrap() {
 
       const position = ball.mesh.getAbsolutePosition();
       if (physicsState.lastBallY !== null) {
-        const descent = physicsState.lastBallY - position.y;
-        if (descent > 0) {
-          physicsState.displacement += descent;
+        const travel = physicsState.lastBallY - position.y;
+        if (travel > 0) {
+          physicsState.displacement += travel;
         }
       }
       physicsState.lastBallY = position.y;
 
-      const span = geometry.topY - geometry.bottomY;
-      const along = geometry.topY - (position.y - geometry.ballRadius);
+      const frontY = geometry.rods.left.front.y;
+      const backY = geometry.rods.left.back.y;
+      const span = frontY - backY || 1;
+      const along = frontY - position.y;
       const progress = clamp(along / span, 0, 1);
       const leftX = getRailX(geometry, state, progress, 'left');
       const rightX = getRailX(geometry, state, progress, 'right');
