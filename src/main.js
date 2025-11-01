@@ -240,6 +240,11 @@ async function bootstrap() {
     ({ clamp, normalizedToOffset, sliderValueToTilt, getRailX, createPocketLayouts } = controlModule);
     let pocketLayout = createPocketLayouts(geometry);
     let ball;
+    let leftRail;
+    let rightRail;
+    let leftRailCollider;
+    let rightRailCollider;
+    let railLength = 0;
 
     await step('Initialize UI controls', async () => {
       if (!tiltSlider || !tiltReadout) {
@@ -525,11 +530,6 @@ async function bootstrap() {
       return { leftRail, rightRail, leftRailCollider, rightRailCollider, railLength };
     }
 
-    let leftRail;
-    let rightRail;
-    let leftRailCollider;
-    let rightRailCollider;
-    let railLength = 0;
     ({ leftRail, rightRail, leftRailCollider, rightRailCollider, railLength } = await step(
       'Create rails',
       createRails
@@ -794,6 +794,9 @@ async function bootstrap() {
     }
 
     function updateRailMeshes() {
+      if (!leftRail || !rightRail || !leftRailCollider || !rightRailCollider) {
+        return;
+      }
       const leftPath = buildRailPath('left');
       leftRail = MeshBuilder.CreateTube(
         'leftRail',
@@ -932,16 +935,6 @@ async function bootstrap() {
       state.leftAngle = geometry.angles.leftDeg;
       state.rightAngle = geometry.angles.rightDeg;
       pocketLayout = createPocketLayouts(geometry);
-      if (leftRail && rightRail) {
-        updateRailMeshes();
-      }
-      if (ball) {
-        positionBallOnRails(progress);
-      }
-      if (railSupports.left.length || railSupports.right.length) {
-        positionSupports();
-      }
-      updateDebugOverlayMeshes();
       const heightCm = (geometry.adjustable.h / CM).toFixed(1);
       const spacingCm = (geometry.adjustable.d / CM).toFixed(1);
       if (rodHeightReadout) {
@@ -958,6 +951,17 @@ async function bootstrap() {
         rodSpacingSlider.value = spacingCm;
         rodSpacingSlider.setAttribute('aria-valuenow', spacingCm);
       }
+      if (!leftRail || !rightRail) {
+        return;
+      }
+      updateRailMeshes();
+      if (ball) {
+        positionBallOnRails(progress);
+      }
+      if (railSupports.left.length || railSupports.right.length) {
+        positionSupports();
+      }
+      updateDebugOverlayMeshes();
     }
 
     function handlePadDown(side, pointerId, normalized) {
