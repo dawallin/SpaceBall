@@ -231,21 +231,34 @@ async function bootstrap() {
         throw new Error('Tilt controls missing');
       }
 
-      // Rod geometry controls are optional — use defaults if not found
+      // Initialize tilt (always present)
+      state.tilt = sliderValueToTilt(tiltSlider.value ?? 0, tiltBounds);
+      tiltReadout.textContent = `${Math.round(state.tilt)}°`;
+      tiltSlider.setAttribute('aria-valuenow', tiltSlider.value);
+
+      // OPTIONAL rod sliders
       const hasRodSliders =
-        rodHeightSlider && rodHeightReadout && rodSpacingSlider && rodSpacingReadout;
+        !!rodHeightSlider && !!rodHeightReadout &&
+        !!rodSpacingSlider && !!rodSpacingReadout;
 
       if (hasRodSliders) {
         const hCm = (geometry.adjustable.h / CM).toFixed(1);
+        const dCm = (geometry.adjustable.d / CM).toFixed(1);
+
         rodHeightSlider.value = hCm;
         rodHeightReadout.textContent = `${hCm} cm`;
+        rodHeightSlider.setAttribute('aria-valuenow', hCm);
 
-        const dCm = (geometry.adjustable.d / CM).toFixed(1);
         rodSpacingSlider.value = dCm;
         rodSpacingReadout.textContent = `${dCm} cm`;
+        rodSpacingSlider.setAttribute('aria-valuenow', dCm);
 
         const updateGeometryLive = () => {
-          sceneManager.updateGeometry(geometry);
+          // hook this into your existing re-application logic
+          // (minimal, non-destructive geometry refresh)
+          if (typeof sceneManager?.updateGeometry === 'function') {
+            sceneManager.updateGeometry(geometry);
+          }
         };
 
         rodHeightSlider.addEventListener('input', () => {
@@ -262,9 +275,10 @@ async function bootstrap() {
           updateGeometryLive();
         });
       } else {
+        // Safe defaults so the game always starts without these controls
         console.warn('[SpaceBall] Rod geometry sliders missing — using defaults');
-        geometry.adjustable.h ??= 0.03; // 3 cm tilt
-        geometry.adjustable.d ??= 0.04; // 4 cm spacing
+        if (geometry.adjustable.h == null) geometry.adjustable.h = 0.03; // 3 cm
+        if (geometry.adjustable.d == null) geometry.adjustable.d = 0.04; // 4 cm
       }
     });
 

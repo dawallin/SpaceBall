@@ -335,7 +335,7 @@ export function getBoardTopWall(model) {
   const y = -model.board.depth / 2;
   return {
     start: { x: 0, y, z: model.board.floorZ },
-    end: { x: 0, y, z: model.board.floorZ + model.board.topWallHeight },
+    end:   { x: 0, y, z: model.board.floorZ + model.board.topWallHeight },
   };
 }
 
