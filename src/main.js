@@ -246,6 +246,49 @@ async function bootstrap() {
     let rightRailCollider;
     let railLength = 0;
 
+    const applyRodAngles = () => {
+      const progress = getCurrentBallProgress();
+      geometry.updateAngles({ thetaL: state.leftAngle, thetaR: state.rightAngle });
+      state.leftAngle = geometry.angles.leftDeg;
+      state.rightAngle = geometry.angles.rightDeg;
+      if (leftRail && rightRail) {
+        updateRailMeshes();
+      }
+      if (ball) {
+        positionBallOnRails(progress);
+      }
+      if (railSupports.left.length || railSupports.right.length) {
+        positionSupports();
+      }
+      updateDebugOverlayMeshes();
+    };
+
+    const applyRodAdjustables = () => {
+      const progress = getCurrentBallProgress();
+      geometry.updateAdjustables({ h: geometry.adjustable.h, d: geometry.adjustable.d });
+      geometry.updateAngles({ thetaL: state.leftAngle, thetaR: state.rightAngle });
+      state.leftAngle = geometry.angles.leftDeg;
+      state.rightAngle = geometry.angles.rightDeg;
+      pocketLayout = createPocketLayouts(geometry);
+      const heightCm = (geometry.adjustable.h / CM).toFixed(1);
+      const spacingCm = (geometry.adjustable.d / CM).toFixed(1);
+      if (rodHeightReadout) rodHeightReadout.textContent = `${heightCm} cm`;
+      if (rodSpacingReadout) rodSpacingReadout.textContent = `${spacingCm} cm`;
+      if (rodHeightSlider) {
+        rodHeightSlider.value = heightCm;
+        rodHeightSlider.setAttribute('aria-valuenow', heightCm);
+      }
+      if (rodSpacingSlider) {
+        rodSpacingSlider.value = spacingCm;
+        rodSpacingSlider.setAttribute('aria-valuenow', spacingCm);
+      }
+      if (!leftRail || !rightRail) return;
+      updateRailMeshes();
+      if (ball) positionBallOnRails(progress);
+      if (railSupports.left.length || railSupports.right.length) positionSupports();
+      updateDebugOverlayMeshes();
+    };
+
     await step('Initialize UI controls', async () => {
       if (!tiltSlider || !tiltReadout) {
         throw new Error('Tilt controls missing');
@@ -909,59 +952,6 @@ async function bootstrap() {
         }
       });
       overlayMeshes.points.slice(data.points.length).forEach((mesh) => mesh && (mesh.isVisible = false));
-    }
-
-    function applyRodAngles() {
-      const progress = getCurrentBallProgress();
-      geometry.updateAngles({ thetaL: state.leftAngle, thetaR: state.rightAngle });
-      state.leftAngle = geometry.angles.leftDeg;
-      state.rightAngle = geometry.angles.rightDeg;
-      if (leftRail && rightRail) {
-        updateRailMeshes();
-      }
-      if (ball) {
-        positionBallOnRails(progress);
-      }
-      if (railSupports.left.length || railSupports.right.length) {
-        positionSupports();
-      }
-      updateDebugOverlayMeshes();
-    }
-
-    function applyRodAdjustables() {
-      const progress = getCurrentBallProgress();
-      geometry.updateAdjustables({ h: geometry.adjustable.h, d: geometry.adjustable.d });
-      geometry.updateAngles({ thetaL: state.leftAngle, thetaR: state.rightAngle });
-      state.leftAngle = geometry.angles.leftDeg;
-      state.rightAngle = geometry.angles.rightDeg;
-      pocketLayout = createPocketLayouts(geometry);
-      const heightCm = (geometry.adjustable.h / CM).toFixed(1);
-      const spacingCm = (geometry.adjustable.d / CM).toFixed(1);
-      if (rodHeightReadout) {
-        rodHeightReadout.textContent = `${heightCm} cm`;
-      }
-      if (rodSpacingReadout) {
-        rodSpacingReadout.textContent = `${spacingCm} cm`;
-      }
-      if (rodHeightSlider) {
-        rodHeightSlider.value = heightCm;
-        rodHeightSlider.setAttribute('aria-valuenow', heightCm);
-      }
-      if (rodSpacingSlider) {
-        rodSpacingSlider.value = spacingCm;
-        rodSpacingSlider.setAttribute('aria-valuenow', spacingCm);
-      }
-      if (!leftRail || !rightRail) {
-        return;
-      }
-      updateRailMeshes();
-      if (ball) {
-        positionBallOnRails(progress);
-      }
-      if (railSupports.left.length || railSupports.right.length) {
-        positionSupports();
-      }
-      updateDebugOverlayMeshes();
     }
 
     function handlePadDown(side, pointerId, normalized) {
