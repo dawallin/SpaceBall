@@ -26,8 +26,8 @@ test('slider values map to the configured tilt range', () => {
 });
 
 test('tilt acceleration scales with the tilt angle', () => {
-  const gentle = tiltToAcceleration(10);
-  const steep = tiltToAcceleration(25);
+  const gentle = tiltToAcceleration(10, geometry.gravityBase);
+  const steep = tiltToAcceleration(25, geometry.gravityBase);
   expect(steep).toBeGreaterThan(gentle);
 });
 
@@ -53,10 +53,12 @@ test('pocket layouts follow the planetary ordering', () => {
   expect(pockets).toHaveLength(7);
   const names = pockets.map((pocket) => pocket.name);
   expect(names).toEqual(['Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Pluto']);
-  const laneX = pockets.slice(0, -1).map((pocket) => pocket.x);
-  const sortedX = [...laneX].sort((a, b) => a - b);
-  expect(laneX).toEqual(sortedX);
-  expect(pockets[pockets.length - 1].x).toBeCloseTo(0, 5);
+  const laneY = pockets.map((pocket) => pocket.y);
+  const sortedY = [...laneY].sort((a, b) => b - a);
+  expect(laneY).toEqual(sortedY);
+  pockets.forEach((pocket) => {
+    expect(pocket.x).toBeCloseTo(0, 5);
+  });
   const highlighted = pockets.filter((pocket) => pocket.highlight === true);
   expect(highlighted).toHaveLength(1);
   expect(highlighted[0].name).toBe('Pluto');
