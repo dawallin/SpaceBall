@@ -1,4 +1,9 @@
-import { clamp, createScoringTargets, getRailX as modelRailX } from './geometry.js';
+import {
+  clamp,
+  createScoringTargets,
+  getRailX as modelRailX,
+  EARTH_GRAVITY,
+} from './geometry.js';
 
 export { clamp };
 
@@ -12,7 +17,7 @@ export function sliderValueToTilt(sliderValue, { minTilt = 8, maxTilt = 28 } = {
   return minTilt + (maxTilt - minTilt) * ratio;
 }
 
-export function tiltToAcceleration(tiltDeg, gravityBase = 40) {
+export function tiltToAcceleration(tiltDeg, gravityBase = EARTH_GRAVITY) {
   return gravityBase * Math.sin((Number(tiltDeg) * Math.PI) / 180);
 }
 
