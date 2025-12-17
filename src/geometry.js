@@ -12,6 +12,7 @@
  */
 
 export const CM = 0.01;
+export const EARTH_GRAVITY = 9.81;
 
 export const ROD_LENGTH = 27 * CM;
 export const ROD_MIDPOINT_HEIGHT = 3.6 * CM;
@@ -143,16 +144,18 @@ export function getRodPoint(rod, progress) {
 
 export function createScoringTargets(board = BOARD_DIMENSIONS) {
   const laneNames = ['Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter', 'Saturn'];
-  const laneSpacing = board.width / (laneNames.length + 1);
+  const pocketSpacing = 3 * CM;
+  const startY = -board.depth / 2 - 2.5 * CM;
+  const baseZ = board.floorZ + board.floorThickness + 0.7 * CM;
   const targets = laneNames.map((label, index) => {
-    const x = -board.width / 2 + laneSpacing * (index + 1);
+    const y = startY - pocketSpacing * index;
     return {
       label,
       score: (index + 1) * 50,
       center: {
-        x,
-        y: -board.depth / 2 - 4 * CM,
-        z: board.floorZ + board.floorThickness + 0.8 * CM,
+        x: 0,
+        y,
+        z: baseZ - index * 0.05 * CM,
       },
     };
   });
@@ -162,8 +165,8 @@ export function createScoringTargets(board = BOARD_DIMENSIONS) {
     score: 400,
     center: {
       x: 0,
-      y: -board.depth / 2 - 8 * CM,
-      z: board.floorZ + board.floorThickness + 0.6 * CM,
+      y: startY - pocketSpacing * laneNames.length - 1.5 * CM,
+      z: baseZ - laneNames.length * 0.05 * CM - 0.2 * CM,
     },
   });
 
@@ -219,7 +222,7 @@ export function createGeometryModel(initial = {}) {
     supportRadius: 0.0038,
     supportDropZ: BOARD_DIMENSIONS.floorZ - 0.08,
     ballStartZ: BOARD_DIMENSIONS.floorZ + ROD_MIDPOINT_HEIGHT,
-    gravityBase: 9.81,
+    gravityBase: EARTH_GRAVITY,
     updateAdjustables(update) {
       if (!update) return;
       if (typeof update.h !== 'undefined') {
