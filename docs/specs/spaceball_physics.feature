@@ -49,7 +49,7 @@ Feature: Realistic rod-ball mechanical physics
     And rod impostors should remain kinematic so player inputs directly control their separation
 
   Scenario: Scoring and telemetry when the ball drops
-    Given the simulation tracks the ball's cumulative Y displacement from its starting position
+    Given the simulation tracks the ball's cumulative path length along the Y axis, including uphill motion back toward the apex
     When the drop event triggers because the ball's center falls below the rod plane
     Then the score should equal the total Y displacement travelled before the drop
     And the event payload should include the final separation distance of the rods
