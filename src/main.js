@@ -781,6 +781,7 @@ async function bootstrap() {
       ready: false,
       lastBallY: null,
       displacement: 0,
+      netDisplacement: 0,
       dropTriggered: false,
       dropSeparation: 0,
       events: [],
@@ -796,6 +797,8 @@ async function bootstrap() {
       const maxAngle = Math.PI / 2.2;
       const tiltAngle = minAngle + (maxAngle - minAngle) * normalizedTilt;
       boardPivot.rotation.x = -tiltAngle;
+      syncKinematicTransforms(0);
+      positionSupports();
     }
 
     updateBoardTilt();
@@ -834,6 +837,32 @@ async function bootstrap() {
       const translation = new Vector3();
       node.getWorldMatrix().decompose(scaling, rotation, translation);
       return { rotation, position: translation };
+    }
+
+    function syncKinematicTransforms(stepTime = 0) {
+      if (!physicsState.ready) return;
+
+      const bodies = [
+        { node: leftRailCollider, body: physicsState.leftAggregate?.body },
+        { node: rightRailCollider, body: physicsState.rightAggregate?.body },
+      ];
+
+      bodies.forEach(({ node, body }) => {
+        if (!node || !body) return;
+        const { position, rotation } = getWorldTransform(node);
+        body.setTargetTransform?.(position, rotation, stepTime);
+        body.setTransformation?.(position, rotation);
+      });
+
+      ['left', 'right'].forEach((side) => {
+        railSupports[side]?.forEach((support) => {
+          const agg = support?.physicsAggregate?.body;
+          if (!agg) return;
+          const { position, rotation } = getWorldTransform(support);
+          agg.setTargetTransform?.(position, rotation, stepTime);
+          agg.setTransformation?.(position, rotation);
+        });
+      });
     }
 
     function updateRailMeshes() {
@@ -1118,6 +1147,7 @@ async function bootstrap() {
       physicsState.events.push({
         type: 'drop',
         displacement: physicsState.displacement,
+        netDisplacement: physicsState.netDisplacement,
         separation: physicsState.dropSeparation,
         timestamp: performance.now(),
       });
@@ -1131,6 +1161,7 @@ async function bootstrap() {
       ball.resetTimer = 0;
       ball.mesh.isVisible = true;
       physicsState.displacement = 0;
+      physicsState.netDisplacement = 0;
       physicsState.lastBallY = ball.mesh.position.y;
       physicsState.dropTriggered = false;
       physicsState.dropSeparation = 0;
@@ -1152,6 +1183,7 @@ async function bootstrap() {
       }
 
       updateScoreReadout();
+      syncKinematicTransforms(0);
     }
 
     async function initialisePhysics() {
@@ -1222,18 +1254,7 @@ async function bootstrap() {
 
       const enginePhysics = scene.getPhysicsEngine?.();
       const stepTime = enginePhysics?.getTimeStep?.() ?? dtSeconds;
-      const leftBody = physicsState.leftAggregate?.body;
-      const rightBody = physicsState.rightAggregate?.body;
-
-      if (leftBody) {
-        const { position, rotation } = getWorldTransform(leftRailCollider);
-        leftBody.setTargetTransform?.(position, rotation, stepTime);
-      }
-
-      if (rightBody) {
-        const { position, rotation } = getWorldTransform(rightRailCollider);
-        rightBody.setTargetTransform?.(position, rotation, stepTime);
-      }
+      syncKinematicTransforms(stepTime);
     }
 
     function updateBallTelemetry(dtSeconds) {
@@ -1243,10 +1264,9 @@ async function bootstrap() {
 
       const position = ball.mesh.getAbsolutePosition();
       if (physicsState.lastBallY !== null) {
-        const travel = physicsState.lastBallY - position.y;
-        if (travel > 0) {
-          physicsState.displacement += travel;
-        }
+        const deltaY = position.y - physicsState.lastBallY;
+        physicsState.displacement += Math.abs(deltaY);
+        physicsState.netDisplacement += -deltaY;
       }
       physicsState.lastBallY = position.y;
 
